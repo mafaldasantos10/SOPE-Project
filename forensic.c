@@ -1,8 +1,10 @@
 #include <stdio.h> 
 #include <stdlib.h> 
 #include <string.h> 
-#include <dirent.h> 
-#include <sys/stat.h> 
+#include <dirent.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/stat.h>
 #include <errno.h>
 
 unsigned int mask = 0;
@@ -53,8 +55,15 @@ void init(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[], char *envp[]) {
+    
+    struct stat fileStat;
 
     init(argc, argv);
+
+    if (stat(argv[argc-1], &fileStat))
+        perror("Stat");
+
+    printf("size %d\n", (int)fileStat.st_size);
 
     return 0;
 }
