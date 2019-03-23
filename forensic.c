@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include <time.h>
 
@@ -63,28 +64,35 @@ char* formatDate(char* s, time_t val)
 /** @brief runs a given shell command in the format "command filename" */
 void runCommand(char command[], char filename[]) {
     
-    FILE *fp;
-    char buffer[250];
+    //char buffer[100];
+    pid_t pid;
 
     /* shell command "file 'name file'" */
-    sprintf(buffer, "%s %s", command, filename);
+    //sprintf(buffer, "%s %s", command, filename);
 
     /* runs the command */
-    fp = popen(buffer, "r");
-    if (fp == NULL) {
-        printf("Invalid command\n" );
+    pid = fork();
+
+    if (pid != 0) { // PARENT
+        //printf("pai\n");
+        wait(NULL); /* wait for the child to terminate */
+    } 
+    else if (pid == 0) { // CHILD
+        //printf("filho\n");
+        execlp(command, command, filename, NULL);
+        printf("Command not executed !\n");   
         exit(1);
     }
 
     /* prints the command output */
-    fgets(buffer, sizeof(buffer)-1, fp);
-    if (!strcmp(command, "file"))
-        printf("%s", strtok(buffer, ",")); /* only prints the argument before the ',' */
-    else
-        printf(",%s", strtok(buffer, " ")); /* only prints the argument before the ' ' (space) */
+    //fgets(buffer, sizeof(buffer)-1, fp);
+    //if (!strcmp(command, "file"))
+     //   printf("%s", strtok(buffer, ",")); /* only prints the argument before the ',' */
+    //else
+     //   printf(",%s", strtok(buffer, " ")); /* only prints the argument before the ' ' (space) */
     
     /* close */
-    pclose(fp);
+    //pclose(fp);
 }
 
 /** @brief prints some stats of a file */
@@ -93,8 +101,7 @@ void printStats(struct stat fileStat, char filename[]) {
     char date[50];
     int temp;
     
-    runCommand("file", filename);
-
+    runCommand("file", filename); /* file name and type */
     printf(",%lu", fileStat.st_size); /* file size */
     printf(",%x", fileStat.st_mode); /* file protection */
     printf(",%s", formatDate(date, fileStat.st_atime)); /* time of last access */
