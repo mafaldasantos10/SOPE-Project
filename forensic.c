@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -28,7 +29,7 @@ void init(int argc, char *argv[])
 
     if (argc < 2)
     {
-        printf("Usage: %s <file|dir>\n", argv[0]);
+        printf("Usage: %s [-r] [-h [md5[,sha1[,sha256]]]] [-o <outfile>] [-v] <file|dir>\n", argv[0]);
         exit(1);
     }
 
@@ -75,13 +76,33 @@ char *formatDate(char *s, time_t val)
     return s;
 }
 
+char *formatPerm(char *s, int mode)
+{
+    char str[4];
+    int i = -1;
+    if (mode & S_IRUSR){    //User has reading permission
+        str[++i] = 'r';
+    }
+    if (mode & S_IWUSR){    //User has writing permission
+        str[++i] = 'w';
+    }
+    if (mode & S_IXUSR){   //User has executing permission
+        str[++i] = 'x';
+    }
+
+    str[++i] = '\0';
+
+    return strcpy(s, str);
+}
+
 /** @brief runs a given shell command in the format "command filename" */
 void runCommand(char command[], char filename[])
 {
 
     char buffer[BUFFER_SIZE];
     char *token;
-    int pipe_fd[2]; //pipe used for redirecting the output of the command
+    int pipe_fd[2];             //pipe used for redirecting the output of the command
+    int out_fd = STDOUT_FILENO; //By default, the output will go to stdout
     pid_t pid;
 
     /* setting the communication pipe */
@@ -103,7 +124,11 @@ void runCommand(char command[], char filename[])
     {
         close(pipe_fd[READ]);
         dup2(pipe_fd[WRITE], STDOUT_FILENO);
-        execlp(command, command, filename, NULL);
+        if (!strcmp(command, "file"))
+            //option '-p' preserves access date so our forensic analysis doesn't change anything on analised files and dirs
+            execlp(command, command, "-p", filename, NULL);
+        else
+            execlp(command, command, filename, NULL);
         perror("runCommand");
         exit(2);
     }
@@ -114,12 +139,16 @@ void runCommand(char command[], char filename[])
     {
         /* printing first two fields of file command*/
         token = strtok(buffer, ":");
-        printf("%s", token);
+        write(out_fd, token, strlen(token));
         token = strtok(NULL, ",\n");
-        printf(",%s", ++token);
+        token[0] = ','; //swapping the first space in the 2nd field of file's output for a colon
+        write(out_fd, token, strlen(token));
     }
     else
-        printf(",%s", strtok(buffer, " ")); /* only prints the argument before the ' ' (space) */
+    {
+        token = strtok(buffer, " "); /* only selects the argument before the ' ' (space), i.e. the actual cripto */
+        write(out_fd, token, strlen(token));
+    }
 }
 
 /** @brief prints the stats of a file */
@@ -128,10 +157,10 @@ void printStats(struct stat fileStat, char filename[])
 
     char date[50];
 
-    runCommand("file", filename);                         /* file name and type */
-    printf(",%lu", fileStat.st_size);                     /* file size */
-    printf(",%x", fileStat.st_mode);                      /* file protection */
-    printf(",%s", formatDate(date, fileStat.st_atime));   /* time of last access */
+    runCommand("file", filename);                       /* file name and type */
+    printf(",%lu", fileStat.st_size);                   /* file size */
+    printf(",%s", formatPerm(date, fileStat.st_mode));  /* file protection */
+    printf(",%s", formatDate(date, fileStat.st_atime)); /* time of last access */
     printf(",%s", formatDate(date, fileStat.st_mtime)); /* time of last modification */
 
     /* md5 */
