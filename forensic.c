@@ -1,6 +1,6 @@
-#include <stdio.h> 
-#include <stdlib.h> 
-#include <string.h> 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <dirent.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -9,27 +9,40 @@
 #include <errno.h>
 #include <time.h>
 
+#define READ 0
+#define WRITE 1
+#define BUFFER_SIZE 512
+
+/** @brief Bitmask to hold running options.
+ *      Bit 5 | Bit 4 | Bit 3 | Bit 2  | Bit 1 | Bit 0
+ *       -r      md5     sha1   sha256    -o      -v
+*/
 unsigned int mask = 0;
 char outfile[25];
 
 /** @brief ... */
-void init(int argc, char *argv[]) {
+void init(int argc, char *argv[])
+{
 
     char *token;
 
-    if (argc < 2) {
-        printf("Too few arguments!\n");
+    if (argc < 2)
+    {
+        printf("Usage: %s <file|dir>\n", argv[0]);
         exit(1);
     }
 
-    for (int i = 1; i < argc - 1; i++) {
+    for (int i = 1; i < argc - 1; i++)
+    {
         if (!strcmp(argv[i], "-r"))
             mask |= 0x20;
 
-        if (!strcmp(argv[i-1], "-h")) {
+        if (!strcmp(argv[i - 1], "-h"))
+        {
             token = strtok(argv[i], ",");
 
-            while (token != NULL) {
+            while (token != NULL)
+            {
 
                 if (!strcmp(token, "md5"))
                     mask |= 0x10;
@@ -44,7 +57,8 @@ void init(int argc, char *argv[]) {
             }
         }
 
-        if (!strcmp(argv[i-1], "-o")) {
+        if (!strcmp(argv[i - 1], "-o"))
+        {
             strcpy(outfile, argv[i]);
             mask |= 0x02;
         }
@@ -55,78 +69,96 @@ void init(int argc, char *argv[]) {
 }
 
 /** @brief returns a string with the date complying with the ISO 8601 format, <date>T<time> */
-char* formatDate(char* s, time_t val)
+char *formatDate(char *s, time_t val)
 {
     strftime(s, 50, "%Y-%m-%dT%X", localtime(&val));
     return s;
 }
 
 /** @brief runs a given shell command in the format "command filename" */
-void runCommand(char command[], char filename[]) {
-    
-    //char buffer[100];
+void runCommand(char command[], char filename[])
+{
+
+    char buffer[BUFFER_SIZE];
+    char *token;
+    int pipe_fd[2]; //pipe used for redirecting the output of the command
     pid_t pid;
 
-    /* shell command "file 'name file'" */
-    //sprintf(buffer, "%s %s", command, filename);
+    /* setting the communication pipe */
+    if (pipe(pipe_fd) < 0)
+    {
+        perror("runCommand: pipe");
+        exit(1);
+    }
 
     /* runs the command */
     pid = fork();
 
-    if (pid != 0) { // PARENT
-        //printf("pai\n");
+    if (pid != 0) // PARENT
+    {
+        close(pipe_fd[WRITE]);
         wait(NULL); /* wait for the child to terminate */
-    } 
-    else if (pid == 0) { // CHILD
-        //printf("filho\n");
+    }
+    else if (pid == 0) // CHILD
+    {
+        close(pipe_fd[READ]);
+        dup2(pipe_fd[WRITE], STDOUT_FILENO);
         execlp(command, command, filename, NULL);
-        printf("Command not executed !\n");   
-        exit(1);
+        perror("runCommand");
+        exit(2);
     }
 
     /* prints the command output */
-    //fgets(buffer, sizeof(buffer)-1, fp);
-    //if (!strcmp(command, "file"))
-     //   printf("%s", strtok(buffer, ",")); /* only prints the argument before the ',' */
-    //else
-     //   printf(",%s", strtok(buffer, " ")); /* only prints the argument before the ' ' (space) */
-    
-    /* close */
-    //pclose(fp);
+    read(pipe_fd[READ], buffer, BUFFER_SIZE);
+    if (!strcmp(command, "file"))
+    {
+        /* printing first two fields of file command*/
+        token = strtok(buffer, ":");
+        printf("%s", token);
+        token = strtok(NULL, ",\n");
+        printf(",%s", ++token);
+    }
+    else
+        printf(",%s", strtok(buffer, " ")); /* only prints the argument before the ' ' (space) */
 }
 
-/** @brief prints some stats of a file */
-void printStats(struct stat fileStat, char filename[]) {
+/** @brief prints the stats of a file */
+void printStats(struct stat fileStat, char filename[])
+{
 
     char date[50];
-    int temp;
-    
-    runCommand("file", filename); /* file name and type */
-    printf(",%lu", fileStat.st_size); /* file size */
-    printf(",%x", fileStat.st_mode); /* file protection */
-    printf(",%s", formatDate(date, fileStat.st_atime)); /* time of last access */
+
+    runCommand("file", filename);                         /* file name and type */
+    printf(",%lu", fileStat.st_size);                     /* file size */
+    printf(",%x", fileStat.st_mode);                      /* file protection */
+    printf(",%s", formatDate(date, fileStat.st_atime));   /* time of last access */
     printf(",%s", formatDate(date, fileStat.st_mtime)); /* time of last modification */
 
     /* md5 */
-    if (((temp = mask & 0x10)>> 4) == 1)
+    //If bit is set, numerical value will be greater than 0 -> true
+    if (mask & 0x10)
         runCommand("md5sum", filename);
-        
+
     /* sha1 */
-    if (((temp = mask & 0x08)>> 3) == 1)
+    if (mask & 0x08)
         runCommand("sha1sum", filename);
 
     /* sha256 */
-    if (((temp = mask & 0x04)>> 2) == 1)
+    if (mask & 0x04)
         runCommand("sha256sum", filename);
+
+    printf("\n");
 }
 
-int main(int argc, char *argv[], char *envp[]) {
-    
+int main(int argc, char *argv[], char *envp[])
+{
+
     struct stat fileStat;
 
     init(argc, argv);
 
-    if (stat(argv[argc-1], &fileStat)) {
+    if (stat(argv[argc - 1], &fileStat))
+    {
         perror("Stat");
         exit(1);
     }
