@@ -19,12 +19,10 @@
  *       -r      md5     sha1   sha256    -o      -v
 */
 unsigned int mask = 0;
-char outfile[25];
 
 /** @brief ... */
 void init(int argc, char *argv[])
 {
-
     char *token;
 
     if (argc < 2)
@@ -60,7 +58,12 @@ void init(int argc, char *argv[])
 
         if (!strcmp(argv[i - 1], "-o"))
         {
-            strcpy(outfile, argv[i]);
+            int out = open(argv[i], O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_SYNC, 0664);
+            if(out < 0){
+                perror(argv[i]);
+                exit(1);
+            }
+            dup2(out, STDOUT_FILENO);
             mask |= 0x02;
         }
 
@@ -141,48 +144,59 @@ int runCommand(char command[], char filename[], char out_buffer[])
 
     /* sends the command output to out_buffer */
     return read(pipe_fd[READ], out_buffer, BUFFER_SIZE);
-    // if (!strcmp(command, "file"))
-    // {
-    //     /* printing first two fields of file command*/
-    //     token = strtok(buffer, ":");
-    //     write(out_fd, token, strlen(token));
-    //     token = strtok(NULL, ",\n");
-    //     token[0] = ','; //swapping the first space in the 2nd field of file's output for a colon
-    //     write(out_fd, token, strlen(token));
-    // }
-    // else
-    // {
-    //     token = strtok(buffer, " "); /* only selects the argument before the ' ' (space), i.e. the actual cripto */
-    //     write(out_fd, token, strlen(token));
-    // }
+}
+
+void printFileCmd(char buffer[])
+{
+    char *token;
+
+    /* printing first two fields of file command*/
+    token = strtok(buffer, ":");
+    printf("%s", token);
+    token = strtok(NULL, ",\n");
+    printf(",%s", ++token); //skipping the first char (space) 
+}
+
+void printSum(char buffer[])
+{
+    char *token;
+
+    token = strtok(buffer, " "); /* only selects the argument before the ' ' (space), i.e. the actual cripto */
+    printf(",%s", token);
 }
 
 /** @brief prints the stats of a file */
 void printStats(struct stat fileStat, char filename[])
 {
-    char date[20];
-    char buffer[BUFFER_SIZE];
-    char* token;
-    int out_fd = STDOUT_FILENO; // out_fd is the file descriptor of the output. By default it is stdout fd
+    char str[80];
 
-    runCommand("file", filename, buffer);               /* file name and type */
-    printf(",%lu", fileStat.st_size);                   /* file size */
-    printf(",%s", formatPerm(date, fileStat.st_mode));  /* file protection */
-    printf(",%s", formatDate(date, fileStat.st_atime)); /* time of last access */
-    printf(",%s", formatDate(date, fileStat.st_mtime)); /* time of last modification */
+    runCommand("file", filename, str); /* file name and type */
+    printFileCmd(str);
+    printf(",%lu", fileStat.st_size);                  /* printing file size */
+    printf(",%s", formatPerm(str, fileStat.st_mode));  /* printing file protection */
+    printf(",%s", formatDate(str, fileStat.st_atime)); /* printing time of last access */
+    printf(",%s", formatDate(str, fileStat.st_mtime)); /* printing time of last modification */
 
     /* md5 */
-    //If bit is set, numerical value will be greater than 0 -> true
     if (mask & 0x10)
-        runCommand("md5sum", filename, buffer);
+    {
+        runCommand("md5sum", filename, str);
+        printSum(str);
+    }
 
     /* sha1 */
     if (mask & 0x08)
-        runCommand("sha1sum", filename, buffer);
+    {
+        runCommand("sha1sum", filename, str);
+        printSum(str);
+    }
 
     /* sha256 */
     if (mask & 0x04)
-        runCommand("sha256sum", filename, buffer);
+    {
+        runCommand("sha256sum", filename, str);
+        printSum(str);
+    }
 
     printf("\n");
 }
