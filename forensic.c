@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <time.h>
 #include "utility.h"
+#include <dirent.h>
 
 #define READ 0
 #define WRITE 1
@@ -56,7 +57,8 @@ void init(int argc, char *argv[])
         if (!strcmp(argv[i - 1], "-o"))
         {
             int out = open(argv[i], O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_SYNC, 0664);
-            if(out < 0){
+            if (out < 0)
+            {
                 perror(argv[i]);
                 exit(1);
             }
@@ -151,7 +153,7 @@ void printFileCmd(char buffer[])
     token = strtok(buffer, ":");
     printf("%s", token);
     token = strtok(NULL, ",\n");
-    printf(",%s", ++token); //skipping the first char (space) 
+    printf(",%s", ++token); //skipping the first char (space)
 }
 
 void printSum(char buffer[])
@@ -198,20 +200,56 @@ void printStats(struct stat fileStat, char filename[])
     printf("\n");
 }
 
-int main(int argc, char *argv[], char *envp[])
+void readDirectory(char *directory)
 {
-
+    DIR *dir;
+    struct dirent *dirent;
     struct stat fileStat;
+    char filePath[258];
 
-    init(argc, argv);
-
-    if (stat(argv[argc - 1], &fileStat))
+    if (stat(directory, &fileStat))
     {
         perror("Stat");
         exit(1);
     }
 
-    printStats(fileStat, argv[argc - 1]);
+    if (S_ISDIR(fileStat.st_mode))
+    {
+        if ((dir = opendir(directory)) == NULL)
+        {
+            perror(directory);
+            exit(2);
+        }
+
+        while ((dirent = readdir(dir)) != NULL)
+        {
+            sprintf(filePath, "%s/%s", directory, dirent->d_name);
+
+            if (stat(filePath, &fileStat) == -1)
+            {
+                perror("readDirectory");
+                exit(3);
+            }
+
+            if (S_ISDIR(fileStat.st_mode))
+            {
+                continue;
+            }
+            else
+                printStats(fileStat, dirent->d_name);
+        }
+    }
+    else
+    {
+        printStats(fileStat, directory);
+    }
+}
+
+int main(int argc, char *argv[], char *envp[])
+{
+    init(argc, argv);
+
+    readDirectory(argv[argc - 1]);
 
     return 0;
 }
