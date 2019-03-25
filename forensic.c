@@ -167,7 +167,7 @@ void printSum(char buffer[])
 /** @brief prints the stats of a file */
 void printStats(struct stat fileStat, char filename[])
 {
-    char str[80];
+    char str[BUFFER_SIZE];
 
     runCommand("file", filename, str); /* file name and type */
     printFileCmd(str);
@@ -225,6 +225,8 @@ void readDirectory(char *directory)
         {
             sprintf(filePath, "%s/%s", directory, dirent->d_name);
 
+            //printf("%s\n", filePath);
+
             if (stat(filePath, &fileStat) == -1)
             {
                 perror("readDirectory");
@@ -236,7 +238,10 @@ void readDirectory(char *directory)
                 continue;
             }
             else
-                printStats(fileStat, dirent->d_name);
+            {
+                printStats(fileStat, filePath);
+                //perror("After printStats");
+            }
         }
     }
     else
