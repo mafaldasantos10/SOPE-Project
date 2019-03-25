@@ -9,22 +9,18 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <time.h>
+#include "utility.h"
 
 #define READ 0
 #define WRITE 1
 #define BUFFER_SIZE 512
 
-/** @brief Bitmask to hold running options.
- *      Bit 5 | Bit 4 | Bit 3 | Bit 2  | Bit 1 | Bit 0
- *       -r      md5     sha1   sha256    -o      -v
-*/
-unsigned int mask = 0;
 char outfile[25];
+Mode mode;
 
 /** @brief ... */
 void init(int argc, char *argv[])
 {
-
     char *token;
 
     if (argc < 2)
@@ -36,7 +32,7 @@ void init(int argc, char *argv[])
     for (int i = 1; i < argc - 1; i++)
     {
         if (!strcmp(argv[i], "-r"))
-            mask |= 0x20;
+            mode.r = 1;
 
         if (!strcmp(argv[i - 1], "-h"))
         {
@@ -46,13 +42,13 @@ void init(int argc, char *argv[])
             {
 
                 if (!strcmp(token, "md5"))
-                    mask |= 0x10;
+                    mode.md5 = 1;
 
                 if (!strcmp(token, "sha1"))
-                    mask |= 0x08;
+                    mode.sha1 = 1;
 
                 if (!strcmp(token, "sha256"))
-                    mask |= 0x04;
+                    mode.sha256 = 1;
 
                 token = strtok(NULL, ",");
             }
@@ -61,11 +57,11 @@ void init(int argc, char *argv[])
         if (!strcmp(argv[i - 1], "-o"))
         {
             strcpy(outfile, argv[i]);
-            mask |= 0x02;
+            mode.o = 1;
         }
 
         if (!strcmp(argv[i], "-v"))
-            mask |= 0x01;
+            mode.v = 1;
     }
 }
 
@@ -76,17 +72,17 @@ char *formatDate(char *s, time_t val)
     return s;
 }
 
-char *formatPerm(char *s, int mode)
+char *formatPerm(char *s, int st_mode)
 {
     char str[4];
     int i = -1;
-    if (mode & S_IRUSR){    //User has reading permission
+    if (st_mode & S_IRUSR){    //User has reading permission
         str[++i] = 'r';
     }
-    if (mode & S_IWUSR){    //User has writing permission
+    if (st_mode & S_IWUSR){    //User has writing permission
         str[++i] = 'w';
     }
-    if (mode & S_IXUSR){   //User has executing permission
+    if (st_mode & S_IXUSR){   //User has executing permission
         str[++i] = 'x';
     }
 
@@ -98,7 +94,6 @@ char *formatPerm(char *s, int mode)
 /** @brief runs a given shell command in the format "command filename" */
 void runCommand(char command[], char filename[])
 {
-
     char buffer[BUFFER_SIZE];
     char *token;
     int pipe_fd[2];             //pipe used for redirecting the output of the command
@@ -165,15 +160,15 @@ void printStats(struct stat fileStat, char filename[])
 
     /* md5 */
     //If bit is set, numerical value will be greater than 0 -> true
-    if (mask & 0x10)
+    if (mode.md5)
         runCommand("md5sum", filename);
 
     /* sha1 */
-    if (mask & 0x08)
+    if (mode.sha1)
         runCommand("sha1sum", filename);
 
     /* sha256 */
-    if (mask & 0x04)
+    if (mode.sha256)
         runCommand("sha256sum", filename);
 
     printf("\n");
