@@ -15,7 +15,6 @@
 #define WRITE 1
 #define BUFFER_SIZE 512
 
-char outfile[25];
 Mode mode;
 
 /** @brief ... */
@@ -56,7 +55,12 @@ void init(int argc, char *argv[])
 
         if (!strcmp(argv[i - 1], "-o"))
         {
-            strcpy(outfile, argv[i]);
+            int out = open(argv[i], O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_SYNC, 0664);
+            if(out < 0){
+                perror(argv[i]);
+                exit(1);
+            }
+            dup2(out, STDOUT_FILENO);
             mode.o = 1;
         }
 
@@ -66,23 +70,26 @@ void init(int argc, char *argv[])
 }
 
 /** @brief returns a string with the date complying with the ISO 8601 format, <date>T<time> */
-char *formatDate(char *s, time_t val)
+char *formatDate(char s[], time_t val)
 {
-    strftime(s, 50, "%Y-%m-%dT%X", localtime(&val));
+    strftime(s, 20, "%Y-%m-%dT%X", localtime(&val));
     return s;
 }
 
-char *formatPerm(char *s, int st_mode)
+char *formatPerm(char s[], int mode)
 {
     char str[4];
     int i = -1;
-    if (st_mode & S_IRUSR){    //User has reading permission
+    if (mode & S_IRUSR)
+    { //User has reading permission
         str[++i] = 'r';
     }
-    if (st_mode & S_IWUSR){    //User has writing permission
+    if (mode & S_IWUSR)
+    { //User has writing permission
         str[++i] = 'w';
     }
-    if (st_mode & S_IXUSR){   //User has executing permission
+    if (mode & S_IXUSR)
+    { //User has executing permission
         str[++i] = 'x';
     }
 
@@ -91,13 +98,17 @@ char *formatPerm(char *s, int st_mode)
     return strcpy(s, str);
 }
 
-/** @brief runs a given shell command in the format "command filename" */
-void runCommand(char command[], char filename[])
+/** @brief runs a given shell command in the format "command filename". It's output is sent to out_buffer
+ * 
+ *  @param command String containing the command name
+ *  @param filename String containing the name of the file
+ *  @param out_buffer String to whom the output will be sent
+ * 
+ *  @return Number of chars written to out_buffer
+ */
+int runCommand(char command[], char filename[], char out_buffer[])
 {
-    char buffer[BUFFER_SIZE];
-    char *token;
-    int pipe_fd[2];             //pipe used for redirecting the output of the command
-    int out_fd = STDOUT_FILENO; //By default, the output will go to stdout
+    int pipe_fd[2]; //pipe used for redirecting the output of the command
     pid_t pid;
 
     /* setting the communication pipe */
@@ -128,48 +139,61 @@ void runCommand(char command[], char filename[])
         exit(2);
     }
 
-    /* prints the command output */
-    read(pipe_fd[READ], buffer, BUFFER_SIZE);
-    if (!strcmp(command, "file"))
-    {
-        /* printing first two fields of file command*/
-        token = strtok(buffer, ":");
-        write(out_fd, token, strlen(token));
-        token = strtok(NULL, ",\n");
-        token[0] = ','; //swapping the first space in the 2nd field of file's output for a colon
-        write(out_fd, token, strlen(token));
-    }
-    else
-    {
-        token = strtok(buffer, " "); /* only selects the argument before the ' ' (space), i.e. the actual cripto */
-        write(out_fd, token, strlen(token));
-    }
+    /* sends the command output to out_buffer */
+    return read(pipe_fd[READ], out_buffer, BUFFER_SIZE);
+}
+
+void printFileCmd(char buffer[])
+{
+    char *token;
+
+    /* printing first two fields of file command*/
+    token = strtok(buffer, ":");
+    printf("%s", token);
+    token = strtok(NULL, ",\n");
+    printf(",%s", ++token); //skipping the first char (space) 
+}
+
+void printSum(char buffer[])
+{
+    char *token;
+
+    token = strtok(buffer, " "); /* only selects the argument before the ' ' (space), i.e. the actual cripto */
+    printf(",%s", token);
 }
 
 /** @brief prints the stats of a file */
 void printStats(struct stat fileStat, char filename[])
 {
+    char str[80];
 
-    char date[50];
-
-    runCommand("file", filename);                       /* file name and type */
-    printf(",%lu", fileStat.st_size);                   /* file size */
-    printf(",%s", formatPerm(date, fileStat.st_mode));  /* file protection */
-    printf(",%s", formatDate(date, fileStat.st_atime)); /* time of last access */
-    printf(",%s", formatDate(date, fileStat.st_mtime)); /* time of last modification */
+    runCommand("file", filename, str); /* file name and type */
+    printFileCmd(str);
+    printf(",%lu", fileStat.st_size);                  /* printing file size */
+    printf(",%s", formatPerm(str, fileStat.st_mode));  /* printing file protection */
+    printf(",%s", formatDate(str, fileStat.st_atime)); /* printing time of last access */
+    printf(",%s", formatDate(str, fileStat.st_mtime)); /* printing time of last modification */
 
     /* md5 */
-    //If bit is set, numerical value will be greater than 0 -> true
     if (mode.md5)
-        runCommand("md5sum", filename);
+    {
+        runCommand("md5sum", filename, str);
+        printSum(str);
+    }
 
     /* sha1 */
     if (mode.sha1)
-        runCommand("sha1sum", filename);
+    {
+        runCommand("sha1sum", filename, str);
+        printSum(str);
+    }
 
     /* sha256 */
     if (mode.sha256)
-        runCommand("sha256sum", filename);
+    {
+        runCommand("sha256sum", filename, str);
+        printSum(str);
+    }
 
     printf("\n");
 }
