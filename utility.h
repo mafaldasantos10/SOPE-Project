@@ -15,10 +15,10 @@ typedef struct {
   int sha1;
   /** @brief sha256 hash */
   int sha256;
-  /** @brief Write in a outfile */
+  /** @brief Write in an outfile */
   int o;
   /** @brief logfile */
   int v;
-} Mode;
+} opt_t;
 
 /**@}*/
