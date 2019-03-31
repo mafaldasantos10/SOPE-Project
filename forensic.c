@@ -12,13 +12,13 @@
 #include <dirent.h>
 #include "utility.h"
 
-#define READ 0
-#define WRITE 1
-#define BUFFER_SIZE 512
-
 opt_t options;
 
-/** @brief Initializes the program. Checks for invalid inputs and parses exection options (setting opt_t fields to true)
+log_t logF;
+
+void writeLog(char* act);
+
+/** @brief Initializes the program. Checks for invalid inputs and parses execution options (setting opt_t fields to true)
  * 
  *  @param argc Number of arguments (directly from main)
  *  @param argv Array containing the arguments (directly from main)
@@ -71,53 +71,32 @@ void init(int argc, char *argv[])
         }
 
         if (!strcmp(argv[i], "-v"))
+        {
+            putenv("LOGFILENAME=mafy.txt");
+            logF.logFile =getenv("LOGFILENAME");
+            logF.fileDescriptor = open(logF.logFile, O_WRONLY | O_CREAT | O_APPEND, 0664);
+            writeLog("opened Log \n");
             options.v = 1;
+        }
     }
 }
 
-/** @brief Formats the value to a date complying with the ISO 8601 format, <date>T<time>
- * 
- *  @param s String (char array) to where the output will be written
- *  @param val Time value as in struct stat st_?time fields
- * 
- *  @return Reference to string s
-*/
-char *formatDate(char s[], time_t val)
+void writeLog(char* act)
 {
-    strftime(s, 20, "%Y-%m-%dT%X", localtime(&val));
-    return s;
+    char* inf = malloc(sizeof(char)*1024);
+
+    long ticksPS = sysconf(_SC_CLK_TCK)*1000;
+    logF.end = times(&logF.time);
+
+    double currentTime = ((double)logF.end - logF.start)/ticksPS;
+
+    sprintf(inf, "%2f - %8d - %s", currentTime, getpid(), act);
+
+    //printf("string %s \n", inf);
+    write(logF.fileDescriptor, inf, strlen(inf));
 }
 
-/** @brief Formats the file permissions value into a string containing the user permissions.
- *  
- *  @param s String (char array) to where the output is written
- *  @param st_mode Struct stat st_mode field value (holds the file permissions)
- * 
- *  @return Reference to string s
- */
-char *formatPermissions(char s[], int st_mode)
-{
-    char str[4];
-    int i = -1;
-    if (st_mode & S_IRUSR)
-    { //User has reading permission
-        str[++i] = 'r';
-    }
-    if (st_mode & S_IWUSR)
-    { //User has writing permission
-        str[++i] = 'w';
-    }
-    if (st_mode & S_IXUSR)
-    { //User has executing permission
-        str[++i] = 'x';
-    }
-
-    str[++i] = '\0';
-
-    return strcpy(s, str);
-}
-
-/** @brief Runs a given shell command in the format "command filename". It's output is sent to out_buffer
+/** @brief Runs a given shell command in the format "command filename". Its output is sent to out_buffer
  * 
  *  @param command Command name
  *  @param filename File name
@@ -174,7 +153,7 @@ void printFileCmd(char buffer[])
     printf(",%s", ++token);
 }
 
-/** @brief Prints the criptograghic summary resulting of a command (either md5sum,sha1sum or sha256sum)
+/** @brief Prints the cryptographic summary resulting of a command (either md5sum, sha1sum or sha256sum)
  * 
  *  @param buffer String (char array) holding the command output.
  */
@@ -186,7 +165,7 @@ void printSum(char buffer[])
     printf(",%s", token);
 }
 
-/** @brief Prints the stats of a file, according the inputed options.
+/** @brief Prints the stats of a file, according to the inputed options.
  * 
  *  @param fileStat Struct stat variable with the file properties
  *  @param filename Name of the file whose stats will be printed
@@ -195,6 +174,9 @@ void printStats(struct stat fileStat, char filename[])
 {
     char str[BUFFER_SIZE];
 
+    //strRemove(str, filename, directory);
+
+    //printf("NAME %s \n", str);
     runCommand("file", filename, str);
     printFileCmd(str);
     printf(",%lu", fileStat.st_size);
@@ -223,17 +205,14 @@ void printStats(struct stat fileStat, char filename[])
     printf("\n");
 }
 
-/** @brief Checks if a directory is either '.' or '..'
- * 
- *  @param directory Directory name
- * 
- *  @return True if it isn't '.' nor '..', False otherwise
- */
-int notPoint(const char *directory){
-    return strcmp(".", directory) && strcmp("..", directory);
+void newFile(char* inf)
+{
+    char* log = malloc(sizeof(char)*1024);
+    sprintf(log, "%s%s %s", "Found", inf, "\n");
+    writeLog(log);
 }
 
-/** @brief Analyses the directory and its subdirectories to get every file stats.
+/** @brief Analyses the directory and its subdirectories to get every file stats
  * 
  *  @param directory Directory name
  */
@@ -270,26 +249,44 @@ void readDirectory(char *directory)
 
             if (S_ISDIR(fileStat.st_mode))
             {
-                if(notPoint(dirent->d_name) && options.r)
-                    readDirectory(filePath);
+                if (notPoint(dirent->d_name) && options.r)
+                {
+                    newFile(dirent->d_name);
+                    pid_t pid = fork();
+
+                    if (pid > 0)
+                    {
+                        wait(NULL);
+                    }
+                    else if (pid == 0)
+                    {
+                        readDirectory(filePath);
+                        break;
+                    }
+                }
             }
             else
             {
+                newFile(dirent->d_name);
                 printStats(fileStat, filePath);
             }
         }
     }
     else
     {
+        newFile(directory);
         printStats(fileStat, directory);
     }
 }
 
-int main(int argc, char *argv[], char *envp[])
+int main(int argc, char *argv[])
 {
+    logF.start = times(&logF.time);
     init(argc, argv);
 
     readDirectory(argv[argc - 1]);
+    //writeLog();
+
 
     return 0;
 }
