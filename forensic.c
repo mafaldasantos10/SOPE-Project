@@ -66,6 +66,7 @@ void init(int argc, char *argv[])
                 perror(argv[i]);
                 exit(1);
             }
+            printf("Data saved on file %s\n", argv[i]);
             dup2(out, STDOUT_FILENO);
             options.o = 1;
         }
