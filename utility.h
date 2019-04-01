@@ -1,5 +1,7 @@
 #pragma once
+
 #include <sys/times.h>
+
 /** @defgroup Utility Utility
  * @{
  *
@@ -32,7 +34,7 @@ typedef struct
 typedef struct
 {
   /**@brief name of the logFile*/
-  char* logFile;
+  char *logFile;
   /**@brief File descriptor*/
   int fileDescriptor;
   /**@brief time started counting*/
@@ -43,7 +45,6 @@ typedef struct
   struct tms time;
 
 } log_t;
-
 
 /** @brief Formats the value to a date complying with the ISO 8601 format, <date>T<time>
  * 
@@ -99,21 +100,6 @@ char *formatPermissions(char s[], int st_mode)
 int notPoint(const char *directory)
 {
   return strcmp(".", directory) && strcmp("..", directory);
-}
-
-void strRemove(char* buff, char *str, char *sub)
-{
-  size_t len = strlen(sub);
-
-  if (len > 0)
-  {
-    buff = str;
-
-    while ((buff = strstr(buff, sub)) != NULL)
-    {
-      memmove(buff, buff + len, strlen(buff + len) + 1);
-    }
-  }
 }
 
 /**@}*/

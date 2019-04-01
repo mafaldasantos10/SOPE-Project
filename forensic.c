@@ -16,7 +16,7 @@ opt_t options;
 
 log_t logF;
 
-void writeLog(char* act);
+void writeLog(char *act);
 
 /** @brief Initializes the program. Checks for invalid inputs and parses execution options (setting opt_t fields to true)
  * 
@@ -73,28 +73,42 @@ void init(int argc, char *argv[])
 
         if (!strcmp(argv[i], "-v"))
         {
-            putenv("LOGFILENAME=mafy.txt");
-            logF.logFile =getenv("LOGFILENAME");
+            char *command = malloc(sizeof(char) * 1024);
+            strcpy(command, "COMMAND");
+            logF.logFile = getenv("LOGFILENAME");
             logF.fileDescriptor = open(logF.logFile, O_WRONLY | O_CREAT | O_APPEND, 0664);
-            writeLog("opened Log \n");
+
+            for (int i = 0; i < argc; i++)
+            {
+                strcat(strcat(command, " "), argv[i]);
+            }
+
+            strcat(command, "\n");
+            writeLog(command);
             options.v = 1;
         }
     }
 }
 
-void writeLog(char* act)
+/** @brief  writes in the log file in the format -inst -pid -act
+ * 
+ * @param  act to be printed
+ */
+void writeLog(char *act)
 {
-    char* inf = malloc(sizeof(char)*1024);
+    char *inf = malloc(sizeof(char) * 1024);
 
-    long ticksPS = sysconf(_SC_CLK_TCK)*1000;
+    long ticksPS = sysconf(_SC_CLK_TCK);
     logF.end = times(&logF.time);
 
-    double currentTime = ((double)logF.end - logF.start)/ticksPS;
+    double currentTime = ((double)logF.end - logF.start) / ticksPS * 1000;
 
-    sprintf(inf, "%2f - %8d - %s", currentTime, getpid(), act);
+    sprintf(inf, "%.2f - %.8d - %s", currentTime, getpid(), act);
 
     //printf("string %s \n", inf);
     write(logF.fileDescriptor, inf, strlen(inf));
+
+    free(inf);
 }
 
 /** @brief Runs a given shell command in the format "command filename". Its output is sent to out_buffer
@@ -175,8 +189,6 @@ void printStats(struct stat fileStat, char filename[])
 {
     char str[BUFFER_SIZE];
 
-    //strRemove(str, filename, directory);
-
     //printf("NAME %s \n", str);
     runCommand("file", filename, str);
     printFileCmd(str);
@@ -206,11 +218,16 @@ void printStats(struct stat fileStat, char filename[])
     printf("\n");
 }
 
-void newFile(char* inf)
+/** @brief Rearranges the char to be printed in the log file
+ * 
+ * @param information to be printed
+ */
+void newFile(char *inf)
 {
-    char* log = malloc(sizeof(char)*1024);
-    sprintf(log, "%s%s %s", "Found", inf, "\n");
+    char *log = malloc(sizeof(char) * 1024);
+    sprintf(log, "%s%s %s", "ANALIZED ", inf, "\n");
     writeLog(log);
+    free(log);
 }
 
 /** @brief Analyses the directory and its subdirectories to get every file stats
@@ -283,11 +300,11 @@ void readDirectory(char *directory)
 int main(int argc, char *argv[])
 {
     logF.start = times(&logF.time);
+
     init(argc, argv);
 
     readDirectory(argv[argc - 1]);
     //writeLog();
-
 
     return 0;
 }
