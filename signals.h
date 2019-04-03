@@ -18,6 +18,38 @@ void set_fd(int fd){
 //     }
 // }
 
+int blockSigint(){
+    sigset_t mask;
+
+    if(sigprocmask(0, NULL, &mask)){
+        return -1;
+    }
+    else{
+        sigaddset(&mask, SIGINT);
+        if(sigprocmask(SIG_SETMASK, &mask, NULL)){
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int unblockSigint(){
+    sigset_t mask;
+
+    if(sigprocmask(0, NULL, &mask)){
+        return -1;
+    }
+    else{
+        sigdelset(&mask, SIGINT);
+        if(sigprocmask(SIG_SETMASK, &mask, NULL)){
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 void sig_usr(int sig){
     static int numDirs = 0;
     static int numFiles = 0;

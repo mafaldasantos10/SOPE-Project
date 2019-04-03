@@ -3,17 +3,17 @@
 #include <string.h>
 #include <dirent.h>
 #include <fcntl.h>
-#include <sys/types.h>
 #include <unistd.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <errno.h>
 #include <time.h>
-#include <dirent.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include "signals.h"
 #include "utility.h"
 
 opt_t options;
-
 log_t logF;
 
 void writeLog(char *act);
@@ -92,7 +92,7 @@ void init(int argc, char *argv[])
 
 /** @brief  writes in the log file in the format -inst -pid -act
  * 
- * @param  act to be printed
+ *  @param  act to be printed
  */
 void writeLog(char *act)
 {
@@ -189,7 +189,6 @@ void printStats(struct stat fileStat, char filename[])
 {
     char str[BUFFER_SIZE];
 
-    //printf("NAME %s \n", str);
     runCommand("file", filename, str);
     printFileCmd(str);
     printf(",%lu", fileStat.st_size);
@@ -220,7 +219,7 @@ void printStats(struct stat fileStat, char filename[])
 
 /** @brief Rearranges the char to be printed in the log file
  * 
- * @param information to be printed
+ *  @param information to be printed
  */
 void newFile(char *inf)
 {
@@ -243,7 +242,7 @@ void readDirectory(char *directory)
 
     if (lstat(directory, &fileStat))
     {
-        perror(directory);
+        perror("Reading Directory");
         exit(1);
     }
 
@@ -251,7 +250,7 @@ void readDirectory(char *directory)
     {
         if ((dir = opendir(directory)) == NULL)
         {
-            perror(directory);
+            perror("Reading Directory");
             exit(2);
         }
 
@@ -261,7 +260,7 @@ void readDirectory(char *directory)
 
             if (lstat(filePath, &fileStat) == -1)
             {
-                perror(directory);
+                perror("Reading Directory");
                 exit(3);
             }
 
@@ -269,7 +268,10 @@ void readDirectory(char *directory)
             {
                 if (notPoint(dirent->d_name) && options.r)
                 {
+                    blockSigint();
                     newFile(dirent->d_name);
+                    unblockSigint();
+
                     pid_t pid = fork();
 
                     if (pid > 0)
@@ -285,15 +287,19 @@ void readDirectory(char *directory)
             }
             else
             {
+                blockSigint();
                 newFile(dirent->d_name);
                 printStats(fileStat, filePath);
+                unblockSigint();
             }
         }
     }
     else
     {
+        blockSigint();
         newFile(directory);
         printStats(fileStat, directory);
+        unblockSigint();
     }
 }
 
