@@ -11,7 +11,9 @@
 /* Macros */
 #define READ 0
 #define WRITE 1
+#define PATH_LENGTH 258
 #define BUFFER_SIZE 512
+#define STRING_MAX 1024
 
 /**  */
 typedef struct

@@ -73,19 +73,20 @@ void init(int argc, char *argv[])
 
         if (!strcmp(argv[i], "-v"))
         {
-            char *command = malloc(sizeof(char) * 1024);
-            strcpy(command, "COMMAND");
+            char command[STRING_MAX];
+
             logF.logFile = getenv("LOGFILENAME");
             logF.fileDescriptor = open(logF.logFile, O_WRONLY | O_CREAT | O_APPEND, 0664);
 
+            strcpy(command, "COMMAND");
             for (int i = 0; i < argc; i++)
             {
                 strcat(strcat(command, " "), argv[i]);
             }
-
             strcat(command, "\n");
-            writeLog(command);
+
             options.v = 1;
+            writeLog(command);
         }
     }
 }
@@ -96,19 +97,19 @@ void init(int argc, char *argv[])
  */
 void writeLog(char *act)
 {
-    char *inf = malloc(sizeof(char) * 1024);
+    if (options.v)
+    {
+        char inf[STRING_MAX];
 
-    long ticksPS = sysconf(_SC_CLK_TCK);
-    logF.end = times(&logF.time);
+        long ticksPS = sysconf(_SC_CLK_TCK);
+        logF.end = times(&logF.time);
 
-    double currentTime = ((double)logF.end - logF.start) / ticksPS * 1000;
+        double currentTime = ((double)logF.end - logF.start) / ticksPS * 1000;
 
-    sprintf(inf, "%.2f - %.8d - %s", currentTime, getpid(), act);
+        sprintf(inf, "%.2f - %.8d - %s", currentTime, getpid(), act);
 
-    //printf("string %s \n", inf);
-    write(logF.fileDescriptor, inf, strlen(inf));
-
-    free(inf);
+        write(logF.fileDescriptor, inf, strlen(inf));
+    }
 }
 
 /** @brief Runs a given shell command in the format "command filename". Its output is sent to out_buffer
@@ -153,16 +154,17 @@ int runCommand(char command[], char filename[], char out_buffer[])
     return read(pipe_fd[READ], out_buffer, BUFFER_SIZE);
 }
 
-/** @brief Prints the first two fields of 'file' command output
+/** @brief Prints a file path and the second field of 'file' command output.
  * 
- *  @param buffer String (char array) holding 'file's output.
+ *  @param buffer String (char array) holding 'file's output
+ *  @param path   Path of the file
  */
-void printFileCmd(char buffer[])
+void printFileCmd(char buffer[], char path[])
 {
     char *token;
 
+    printf("%s", path);
     token = strtok(buffer, ":");
-    printf("%s", token);
     token = strtok(NULL, ",\n");
     //token is incremented to avoid printing a space character after the comma
     printf(",%s", ++token);
@@ -184,13 +186,14 @@ void printSum(char buffer[])
  * 
  *  @param fileStat Struct stat variable with the file properties
  *  @param filename Name of the file whose stats will be printed
+ *  @param path     Path of the file (for correct information printing)
  */
-void printStats(struct stat fileStat, char filename[])
+void printStats(struct stat fileStat, char filename[], char path[])
 {
-    char str[BUFFER_SIZE];
+    char str[STRING_MAX];
 
     runCommand("file", filename, str);
-    printFileCmd(str);
+    printFileCmd(str, path);
     printf(",%lu", fileStat.st_size);
     printf(",%s", formatPermissions(str, fileStat.st_mode));
     printf(",%s", formatDate(str, fileStat.st_atime));
@@ -217,28 +220,31 @@ void printStats(struct stat fileStat, char filename[])
     printf("\n");
 }
 
-/** @brief Rearranges the char to be printed in the log file
+/** @brief Creates a new log file entry for a file.
  * 
- *  @param information to be printed
+ *  @param inf Path and name of the file
  */
 void newFile(char *inf)
 {
-    char *log = malloc(sizeof(char) * 1024);
-    sprintf(log, "%s%s %s", "ANALIZED ", inf, "\n");
-    writeLog(log);
-    free(log);
+    char logEntry[STRING_MAX];
+
+    sprintf(logEntry, "%s %s \n", "ANALIZED", inf);
+    writeLog(logEntry);
 }
 
-/** @brief Analyses the directory and its subdirectories to get every file stats
+/** @brief Analyses the directory and its subdirectories to get every file stats.
+ *      Doesn't allow Ctrl+C to interrupt logfile writing and output printing.
+ *      This way, if a logfile entry is registered it is guaranteed that the file's info is printed on output.
  * 
  *  @param directory Directory name
+ *  @param path Directory's path (without name); used for correct printing of information
  */
-void readDirectory(char *directory)
+void readDirectory(char *directory, char path[])
 {
     DIR *dir;
     struct dirent *dirent;
     struct stat fileStat;
-    char filePath[258];
+    char filePath[PATH_LENGTH];
 
     if (lstat(directory, &fileStat))
     {
@@ -254,7 +260,7 @@ void readDirectory(char *directory)
             exit(2);
         }
 
-        while ((dirent = readdir(dir)) != NULL)
+       while ((dirent = readdir(dir)) != NULL)
         {
             sprintf(filePath, "%s/%s", directory, dirent->d_name);
 
@@ -280,16 +286,21 @@ void readDirectory(char *directory)
                     }
                     else if (pid == 0)
                     {
-                        readDirectory(filePath);
+                        strcat(path, dirent->d_name);
+                        strcat(path, "/");
+                        readDirectory(filePath, path);
                         break;
                     }
                 }
             }
             else
             {
+                char fileName[PATH_LENGTH];
+                sprintf(fileName, "%s%s", path, dirent->d_name);
+
                 blockSigint();
                 newFile(dirent->d_name);
-                printStats(fileStat, filePath);
+                printStats(fileStat, filePath, fileName);
                 unblockSigint();
             }
         }
@@ -298,7 +309,7 @@ void readDirectory(char *directory)
     {
         blockSigint();
         newFile(directory);
-        printStats(fileStat, directory);
+        printStats(fileStat, directory, path);
         unblockSigint();
     }
 }
@@ -309,8 +320,10 @@ int main(int argc, char *argv[])
 
     init(argc, argv);
 
-    readDirectory(argv[argc - 1]);
-    //writeLog();
+    char path[PATH_LENGTH];
+    strcpy(path, "");
+
+    readDirectory(argv[argc - 1], path);
 
     return 0;
 }
