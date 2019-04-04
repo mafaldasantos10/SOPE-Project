@@ -292,11 +292,7 @@ void readDirectory(char *directory, char path[])
 
                     pid_t pid = fork();
 
-                    if (pid > 0)
-                    {
-                        wait(NULL);
-                    }
-                    else if (pid == 0)
+                    if (pid == 0)
                     {
                         strcat(path, dirent->d_name);
                         strcat(path, "/");
@@ -350,6 +346,20 @@ void readDirectory(char *directory, char path[])
     }
 }
 
+void waitChilds() {
+    while(wait(NULL) > 0){ //wait for all children to terminate
+        continue;
+    }
+
+    if (options.o)
+    {
+        //special call to print total number of files and dirs before exiting
+        if(getpid() == parent_pid)
+            sig_usr(-1);
+        close_fd();
+    }
+}
+
 int main(int argc, char *argv[])
 {
     logF.start = times(&logF.time);
@@ -361,12 +371,7 @@ int main(int argc, char *argv[])
 
     readDirectory(argv[argc - 1], path);
 
-    if (options.o && getpid() == parent_pid)
-    {
-        //special call to print total number of files and dirs before exiting
-        sig_usr(-1);
-    }
-    close_fd();
+    waitChilds();
 
     return 0;
 }
