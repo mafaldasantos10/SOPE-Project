@@ -6,15 +6,15 @@
 #include <unistd.h>
 #include <errno.h>
 #include <time.h>
-#include <signal.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include "signals.h"
 #include "utility.h"
+#include "signals.h"
 
 opt_t options;
 log_t logF;
+pid_t parent_pid;
 
 void writeLog(char *act);
 
@@ -26,6 +26,7 @@ void writeLog(char *act);
 void init(int argc, char *argv[])
 {
     char *token;
+    struct sigaction sig;
 
     if (argc < 2)
     {
@@ -67,6 +68,17 @@ void init(int argc, char *argv[])
                 exit(1);
             }
             printf("Data saved on file %s\n", argv[i]);
+
+            sig.sa_handler = sig_usr;
+            sigemptyset(&sig.sa_mask);
+            sigaddset(&sig.sa_mask, SIGINT); //the SIGUSR handler will not be interrupted by CTRL+C
+            sig.sa_flags = SA_RESTART;
+
+            sigaction(SIGUSR1, &sig, NULL);
+            sigaction(SIGUSR2, &sig, NULL);
+
+            parent_pid = getpid();
+            set_fd(dup(STDOUT_FILENO)); //saving STDOUT_FILENO for sigusr handler
             dup2(out, STDOUT_FILENO);
             options.o = 1;
         }
@@ -260,7 +272,7 @@ void readDirectory(char *directory, char path[])
             exit(2);
         }
 
-       while ((dirent = readdir(dir)) != NULL)
+        while ((dirent = readdir(dir)) != NULL)
         {
             sprintf(filePath, "%s/%s", directory, dirent->d_name);
 
@@ -288,6 +300,14 @@ void readDirectory(char *directory, char path[])
                     {
                         strcat(path, dirent->d_name);
                         strcat(path, "/");
+                        if (options.o)
+                        {
+                            if (kill(parent_pid, SIGUSR1))
+                            {
+                                perror("Sending USR1");
+                                exit(4);
+                            }
+                        }
                         readDirectory(filePath, path);
                         break;
                     }
@@ -299,6 +319,14 @@ void readDirectory(char *directory, char path[])
                 sprintf(fileName, "%s%s", path, dirent->d_name);
 
                 blockSigint();
+                if (options.o)
+                {
+                    if (kill(parent_pid, SIGUSR2))
+                    {
+                        perror("Sending USR2");
+                        exit(5);
+                    }
+                }
                 newFile(dirent->d_name);
                 printStats(fileStat, filePath, fileName);
                 unblockSigint();
@@ -308,8 +336,16 @@ void readDirectory(char *directory, char path[])
     else
     {
         blockSigint();
+        if (options.o)
+        {
+            if (kill(parent_pid, SIGUSR2))
+            {
+                perror("Sending USR2");
+                exit(5);
+            }
+        }
         newFile(directory);
-        printStats(fileStat, directory, path);
+        printStats(fileStat, directory, directory);
         unblockSigint();
     }
 }
@@ -324,6 +360,13 @@ int main(int argc, char *argv[])
     strcpy(path, "");
 
     readDirectory(argv[argc - 1], path);
+
+    if (options.o && getpid() == parent_pid)
+    {
+        //special call to print total number of files and dirs before exiting
+        sig_usr(-1);
+    }
+    close_fd();
 
     return 0;
 }
