@@ -246,6 +246,10 @@ void newFile(char *inf)
     writeLog(logEntry);
 }
 
+/** @brief Creates a new log file entry for a signal.
+ * 
+ *  @param sig Signal number
+ */
 void newSignal(int sig)
 {
     char logEntry[STRING_MAX];
@@ -369,11 +373,7 @@ void readDirectory(char *directory, char path[])
 void waitChilds()
 {
     while (wait(NULL) > 0)
-<<<<<<< HEAD
-    { //wait for all children to terminate
-=======
     {   //wait for all children to terminate
->>>>>>> 67e05602af63f3013ce0b3dfd1ce0cdc56351d0b
         continue;
     }
 
