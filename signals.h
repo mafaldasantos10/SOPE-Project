@@ -79,5 +79,4 @@ void sig_usr(int sig)
         sprintf(str, "Finished: %d/%d directories/files analised.\n", numDirs, numFiles);
         write(stdout_fd, str, strlen(str));
     }
-    
 }

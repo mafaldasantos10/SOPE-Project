@@ -244,6 +244,22 @@ void newFile(char *inf)
     writeLog(logEntry);
 }
 
+void newSignal(int sig)
+{
+    char logEntry[STRING_MAX];
+
+    if (sig == SIGUSR1)
+    {
+        sprintf(logEntry, "%s %s \n", "SIGNAL", "USR1");
+    }
+    else if (sig == SIGUSR2)
+    {
+        sprintf(logEntry, "%s %s \n", "SIGNAL", "USR2");
+    }
+
+    writeLog(logEntry);
+}
+
 /** @brief Analyses the directory and its subdirectories to get every file stats.
  *      Doesn't allow Ctrl+C to interrupt logfile writing and output printing.
  *      This way, if a logfile entry is registered it is guaranteed that the file's info is printed on output.
@@ -286,10 +302,6 @@ void readDirectory(char *directory, char path[])
             {
                 if (notPoint(dirent->d_name) && options.r)
                 {
-                    blockSigint();
-                    newFile(dirent->d_name);
-                    unblockSigint();
-
                     pid_t pid = fork();
 
                     if (pid == 0)
@@ -298,6 +310,10 @@ void readDirectory(char *directory, char path[])
                         strcat(path, "/");
                         if (options.o)
                         {
+                            blockSigint();
+                            newSignal(SIGUSR1);
+                            unblockSigint();
+
                             if (kill(parent_pid, SIGUSR1))
                             {
                                 perror("Sending USR1");
@@ -317,6 +333,7 @@ void readDirectory(char *directory, char path[])
                 blockSigint();
                 if (options.o)
                 {
+                    newSignal(SIGUSR2);
                     if (kill(parent_pid, SIGUSR2))
                     {
                         perror("Sending USR2");
@@ -334,6 +351,7 @@ void readDirectory(char *directory, char path[])
         blockSigint();
         if (options.o)
         {
+            newSignal(SIGUSR2);
             if (kill(parent_pid, SIGUSR2))
             {
                 perror("Sending USR2");
@@ -346,15 +364,17 @@ void readDirectory(char *directory, char path[])
     }
 }
 
-void waitChilds() {
-    while(wait(NULL) > 0){ //wait for all children to terminate
+void waitChilds()
+{
+    while (wait(NULL) > 0)
+    {   //wait for all children to terminate
         continue;
     }
 
     if (options.o)
     {
         //special call to print total number of files and dirs before exiting
-        if(getpid() == parent_pid)
+        if (getpid() == parent_pid)
             sig_usr(-1);
         close_fd();
     }
