@@ -58,6 +58,26 @@ int unblockSigint()
     return 0;
 }
 
+int installHandler(void (*handler)(int), int signo)
+{
+    struct sigaction sig;
+
+    sig.sa_handler = handler;
+    sigemptyset(&sig.sa_mask);
+
+    if (signo == SIGINT)
+    {
+        sig.sa_flags = 0;
+    }
+    else
+    {
+        sigaddset(&sig.sa_mask, SIGINT); //the SIGUSR handler will not be interrupted by CTRL+C
+        sig.sa_flags = SA_RESTART | SA_NODEFER;
+    }
+
+    return sigaction(signo, &sig, NULL);
+}
+
 void sig_usr(int sig)
 {
     static int numDirs = 0;
@@ -79,5 +99,4 @@ void sig_usr(int sig)
         sprintf(str, "Finished: %d/%d directories/files analised.\n", numDirs, numFiles);
         write(stdout_fd, str, strlen(str));
     }
-    
 }

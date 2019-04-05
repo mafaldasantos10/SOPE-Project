@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Wextra #to add: -Werror
+CFLAGS = -Wall -Wextra -Werror
 
 forensic: forensic.c
 	cc $(CFLAGS) -o forensic forensic.c

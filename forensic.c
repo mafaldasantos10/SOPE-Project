@@ -26,7 +26,6 @@ void writeLog(char *act);
 void init(int argc, char *argv[])
 {
     char *token;
-    struct sigaction sig;
 
     if (argc < 2)
     {
@@ -69,13 +68,16 @@ void init(int argc, char *argv[])
             }
             printf("Data saved on file %s\n", argv[i]);
 
-            sig.sa_handler = sig_usr;
-            sigemptyset(&sig.sa_mask);
-            sigaddset(&sig.sa_mask, SIGINT); //the SIGUSR handler will not be interrupted by CTRL+C
-            sig.sa_flags = SA_RESTART;
-
-            sigaction(SIGUSR1, &sig, NULL);
-            sigaction(SIGUSR2, &sig, NULL);
+            if (installHandler(sig_usr, SIGUSR1))
+            {
+                perror("Installing SIGUSR1");
+                exit(1);
+            }
+            if (installHandler(sig_usr, SIGUSR2))
+            {
+                perror("Installing SIGUSR2");
+                exit(2);
+            }
 
             parent_pid = getpid();
             set_fd(dup(STDOUT_FILENO)); //saving STDOUT_FILENO for sigusr handler
@@ -346,15 +348,17 @@ void readDirectory(char *directory, char path[])
     }
 }
 
-void waitChilds() {
-    while(wait(NULL) > 0){ //wait for all children to terminate
+void waitChilds()
+{
+    while (wait(NULL) > 0)
+    { //wait for all children to terminate
         continue;
     }
 
     if (options.o)
     {
         //special call to print total number of files and dirs before exiting
-        if(getpid() == parent_pid)
+        if (getpid() == parent_pid)
             sig_usr(-1);
         close_fd();
     }
@@ -362,12 +366,12 @@ void waitChilds() {
 
 int main(int argc, char *argv[])
 {
+    char path[PATH_LENGTH];
+    strcpy(path, "");
+
     logF.start = times(&logF.time);
 
     init(argc, argv);
-
-    char path[PATH_LENGTH];
-    strcpy(path, "");
 
     readDirectory(argv[argc - 1], path);
 
