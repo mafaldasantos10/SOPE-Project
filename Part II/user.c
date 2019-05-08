@@ -4,11 +4,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
-//#include <time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+
 #include "types.h"
 #include "user.h"
+#include "utility.h"
 
 op_type_t op;
 req_create_account_t createAccount;
@@ -36,23 +37,28 @@ void fillOperationInfo(int op, char *argList)
     case OP_CREATE_ACCOUNT: // accountID balance€ “password”
 
         tok = strtok(argList, " ");
+        validateAccountID(tok);
         createAccount.account_id = atoi(tok);
 
         tok = strtok(NULL, " ");
+        printf("%s", tok);
+        validateBalance(tok);
         createAccount.balance = atoi(tok);
 
         tok = strtok(NULL, " ");
+        validatePassword(tok);
         strcpy(createAccount.password, tok);
         break;
 
     case OP_TRANSFER: // destinyID ammount€
 
         tok = strtok(argList, " ");
+        validateAccountID(tok);
         transfer.account_id = atoi(tok);
 
         tok = strtok(NULL, " ");
+        validateAmount(tok);
         transfer.amount = atoi(tok);
-        printf("id %d ammount %d\n", transfer.account_id, transfer.amount);
         break;
 
     default:
