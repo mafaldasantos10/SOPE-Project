@@ -1,13 +1,7 @@
-.PHONY: all clean
-all: bank
-
-CFLAGS = -Wall
-OBJECTS = utility.o user.o
-
-bank: $(OBJECTS)
-	@gcc $(CFLAGS) -pedantic $(OBJECTS) -o bank
-
-utility.o user.o: utility.h user.h
+ all:server.c user.c
+	gcc server.c log.c utility.c -o server -lpthread -Wall -Wextra -pedantic -g
+	gcc user.c log.c utility.c -o user -lpthread -Wall -Wextra -pedantic -g
 
 clean:
-	@rm -f bank $(OBJECTS)
+	rm -f server server.o
+	rm -f user user.o

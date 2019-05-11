@@ -14,8 +14,10 @@
 op_type_t op;
 req_create_account_t createAccount;
 req_transfer_t transfer;
+req_header_t header;
+req_value_t value;
 
-void init(int argc, char *argv[])
+void init(int argc, char *argv[], tlv_request_t* tlv)
 {
     if (argc != 6)
     {
@@ -26,6 +28,24 @@ void init(int argc, char *argv[])
     op = atoi(argv[4]);
 
     fillOperationInfo(op, argv[5]);
+
+    fillHeader(argv);
+
+    tlv->type = op;
+    tlv->value = value;
+    tlv->length =  sizeof(value) + sizeof(op);
+
+}
+
+void fillHeader(char *argv[])
+{
+    header.pid = getpid();
+    header.account_id = atoi(argv[1]);
+    strcpy(header.password, argv[2]);
+    validateDelay(argv[3]);
+    header.op_delay_ms = atoi(argv[3]);
+
+    value.header= header;
 }
 
 void fillOperationInfo(int op, char *argList)
@@ -48,6 +68,8 @@ void fillOperationInfo(int op, char *argList)
         tok = strtok(NULL, " ");
         validatePassword(tok);
         strcpy(createAccount.password, tok);
+
+        value.create = createAccount;
         break;
 
     case OP_TRANSFER: // destinyID ammount€
@@ -59,6 +81,8 @@ void fillOperationInfo(int op, char *argList)
         tok = strtok(NULL, " ");
         validateAmount(tok);
         transfer.amount = atoi(tok);
+
+        value.transfer = transfer;
         break;
 
     default:
@@ -68,5 +92,21 @@ void fillOperationInfo(int op, char *argList)
 
 int main(int argc, char *argv[])
 {
-    init(argc, argv);
+    tlv_request_t* tlv = (tlv_request_t *) malloc(sizeof(struct tlv_request));
+    init(argc, argv, tlv);
+
+    int fifo = open(SERVER_FIFO_PATH, O_WRONLY);
+    if (fifo == -1)
+    {
+        printf("burroooon %d", errno);
+        perror("");
+        return 1;
+    }
+
+    write(fifo, tlv, sizeof(*tlv));//talvez malloc
+    printf("%s",tlv->value.header.password);
+    printf("escrevi \n");
+    close(fifo);
+
+    return 0;
 }

@@ -11,9 +11,9 @@
 
 void validateAccountID(char *accountID)
 {
-    if (atoi(accountID) < 1 ||
-        atoi(accountID) > MAX_BANK_ACCOUNTS ||
-        strlen(accountID) != WIDTH_ACCOUNT)
+    if (atoi(accountID) < 0 ||
+        (uint32_t)atoi(accountID) > MAX_BANK_ACCOUNTS ||
+        strlen(accountID) > WIDTH_ACCOUNT)
     {
         printf("Incorrect Bank Account ID!\n");
         exit(1);
@@ -22,8 +22,8 @@ void validateAccountID(char *accountID)
 
 void validateBalance(char *balance)
 {
-    if (atoi(balance) < MIN_BALANCE ||
-        atoi(balance) > MAX_BALANCE ||
+    if ((uint32_t)atoi(balance) < MIN_BALANCE ||
+        (uint32_t)atoi(balance) > MAX_BALANCE ||
         strlen(balance) > WIDTH_BALANCE)
     {
         printf("Incorrect Balance!\n");
@@ -33,6 +33,7 @@ void validateBalance(char *balance)
 
 void validatePassword(char *pass)
 {
+    //devia verificar espacos
     if (strlen(pass) < MIN_PASSWORD_LEN ||
         strlen(pass) > MAX_PASSWORD_LEN)
     {
@@ -44,9 +45,21 @@ void validatePassword(char *pass)
 void validateAmount(char *amount)
 {
     if (atoi(amount) < 1 ||
-        atoi(amount) > MAX_BALANCE)
+        (uint32_t)atoi(amount) > MAX_BALANCE)
     {
         printf("Incorrect Amount!\n");
         exit(4);
     }
 }
+
+void validateDelay(char *delay)
+{
+    if (atoi(delay) < 1 ||
+        (uint32_t)atoi(delay) > MAX_OP_DELAY_MS)
+    {
+        printf("Incorrect delay!\n");
+        exit(4);
+    }
+}
+
+//criar funcao para ver se so tem numeros
