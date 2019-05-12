@@ -4,64 +4,40 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
-#include <time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include "types.h"
-#include "user.h"
 #include <sys/stat.h>
 
-bank_account_t bankAccounts[MAX_BANK_ACCOUNTS];
+#include "utility.h"
+#include "server.h"
+
 int arrayIndex = 0;
+bank_account_t bankAccounts[MAX_BANK_ACCOUNTS];
 
-char* generateSalt()
-{
-    char hex[16] = "0123456789abcdef";
-    char* salt = malloc(SALT_LEN+1);
-    /* Seed number for rand() */
-
-    for (int i = 0; i < SALT_LEN+1; i++)
-    {
-        salt[i] = hex[rand() % 16];
-    }
-    salt[SALT_LEN]='\0';
-    return salt;
-} 
-
-char* generateHash(char* salt, char* password)
-{
-    FILE* fpout;
-    char* hash = malloc(sizeof(HASH_LEN));
-    char* cmd = malloc(sizeof("echo -n | sha256sum") + MAX_PASSWORD_LEN + SALT_LEN + 1);
-    sprintf(cmd,"echo -n %s%s | sha256sum",password, salt);
-    fpout = popen(cmd, "r");
-    fgets(hash, HASH_LEN, fpout);
-
-    return hash;
-}
-
-void createAdmin(int argc, char *argv[], char* pass)
+void createAdmin(char *pass)
 {
     bank_account_t account;
-    char* salt = malloc(SALT_LEN);
+    char *salt = malloc(SALT_LEN);
+
     strcpy(salt, generateSalt());
     strcpy(account.hash, generateHash(salt, pass));
     strcpy(account.salt, salt);
     account.balance = 0;
     account.account_id = ADMIN_ACCOUNT_ID;
     bankAccounts[0] = account;
+
+    free(salt);
 }
 
 int checkLoginAccount(req_header_t header)
 {
-    char* hash = malloc(HASH_LEN);
+    char *hash = malloc(HASH_LEN);
 
-    for(int i=0; i<=arrayIndex;i++)
+    for (int i = 0; i <= arrayIndex; i++)
     {
-        
         hash = generateHash(bankAccounts[i].salt, header.password);
 
-        if(header.account_id == bankAccounts[i].account_id && !strcmp(hash, bankAccounts[i].hash))
+        if (header.account_id == bankAccounts[i].account_id && !strcmp(hash, bankAccounts[i].hash))
         {
             return i;
         }
@@ -70,95 +46,191 @@ int checkLoginAccount(req_header_t header)
     return -1;
 }
 
-
-void createNewAccount(req_create_account_t createAccount)
+int searchID(uint32_t id)
 {
-    arrayIndex++;
-    bank_account_t account;
-    char* salt = malloc(SALT_LEN);
-    strcpy(salt, generateSalt());
-    strcpy(account.hash, generateHash(salt, createAccount.password));
-    strcpy(account.salt, salt);
-    account.balance = createAccount.balance;
-    account.account_id = createAccount.account_id;
-    printf("array index e id- %d %d \n",arrayIndex, account.account_id);
-    fflush(stdout);
-    bankAccounts[arrayIndex] = account;
-    
-}
-
-
-int checkBalance(req_header_t header)
-{
-   int index = checkLoginAccount(header);
-    printf("loginCheck %d, index \n", index);
-
-   if(index > -1)
-   {
-       printf("account ballance - %d", bankAccounts[index].balance);
-       fflush(stdout);
-       return bankAccounts[index].balance;
-   }
-
-    return 0;
-}
-
-int bankTransfer(req_value_t value)
-{
-    int index = checkLoginAccount(value.header);
-    printf("loginCheck %d, index \n", index);
-    if(index > -1)
+    for (int i = 0; i <= arrayIndex; i++)
     {
-        if(bankAccounts[index].balance < value.transfer.amount)
+        if (id == bankAccounts[i].account_id)
         {
-            return 0;
-        }
-
-        for(int i=0; i<=arrayIndex;i++)
-        {
-            if(value.transfer.account_id == bankAccounts[i].account_id)
-            {
-                printf("previous amount 1 - %d \n", bankAccounts[index].balance);
-                printf("previous amount 2 - %d \n", bankAccounts[i].balance);
-                bankAccounts[i].balance += value.transfer.amount;
-                bankAccounts[index].balance -= value.transfer.amount;
-                printf("new amount 1 - %d \n", bankAccounts[index].balance);
-                printf("new amount 2 - %d \n", bankAccounts[i].balance);
-                fflush(stdout);
-                return 1;
-            }
+            return id;
         }
     }
 
-    return 0;
+    return -1;
 }
 
-int serverDown(req_header_t header)
+void createNewAccount(req_create_account_t newAccount, rep_header_t *sHeader)
 {
-    int index = checkLoginAccount(header);
-    if(index == 0)
+    sHeader->account_id = newAccount.account_id;
+
+    if (searchID(newAccount.account_id) > -1)
     {
+        sHeader->ret_code = RC_SAME_ID;
+        return;
+    }
+
+    arrayIndex++;
+    bank_account_t account;
+    char *salt = malloc(SALT_LEN);
+
+    strcpy(salt, generateSalt());
+    strcpy(account.hash, generateHash(salt, newAccount.password));
+    strcpy(account.salt, salt);
+    account.balance = newAccount.balance;
+    account.account_id = newAccount.account_id;
+    bankAccounts[arrayIndex] = account;
+    sHeader->ret_code = RC_OK;
+
+    free(salt);
+}
+
+void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBalance)
+{
+    sHeader->account_id = header.account_id;
+    int index = checkLoginAccount(header);
+    printf("loginCheck %d, index \n", index);
+
+    if (index > -1)
+    {
+        printf("account ballance - %d", bankAccounts[index].balance);
+        fflush(stdout);
+        sHeader->ret_code = RC_OK;
+        sBalance->balance = bankAccounts[index].balance;
+    }
+    else
+    {
+        sHeader->ret_code = RC_LOGIN_FAIL;
+    }
+}
+
+int transferChecks(req_value_t value, int index, rep_header_t *sHeader, rep_transfer_t *sTransfer)
+{
+    if (value.header.account_id == value.transfer.account_id)
+    {
+        sHeader->ret_code = RC_SAME_ID;
+        sTransfer->balance = bankAccounts[index].balance;
+        return 1;
+    }
+
+    if ((int)(bankAccounts[index].balance - value.transfer.amount) < (int)MIN_BALANCE)
+    {
+        sHeader->ret_code = RC_NO_FUNDS;
+        sTransfer->balance = bankAccounts[index].balance;
         return 1;
     }
 
     return 0;
 }
 
-int RequestHandler(tlv_request_t tlv)
+int finishTransfer(req_value_t value, int index, int i, rep_header_t *sHeader, rep_transfer_t *sTransfer)
 {
-    printf("op: %d \n", tlv.type);
+    if (value.transfer.account_id == bankAccounts[i].account_id)
+    {
+        if (bankAccounts[i].balance + value.transfer.amount > MAX_BALANCE)
+        {
+            sHeader->ret_code = RC_TOO_HIGH;
+            sTransfer->balance = bankAccounts[index].balance;
+            return 1;
+        }
+
+        printf("previous amount 1 - %d \n", bankAccounts[index].balance);
+        printf("previous amount 2 - %d \n", bankAccounts[i].balance);
+        bankAccounts[i].balance += value.transfer.amount;
+        bankAccounts[index].balance -= value.transfer.amount;
+        printf("new amount 1 - %d \n", bankAccounts[index].balance);
+        printf("new amount 2 - %d \n", bankAccounts[i].balance);
+        fflush(stdout);
+        sHeader->ret_code = RC_OK;
+        sTransfer->balance = bankAccounts[index].balance;
+        return 1;
+    }
+
+    return 0;
+}
+
+void bankTransfer(req_value_t value, rep_header_t *sHeader, rep_transfer_t *sTransfer)
+{
+    sHeader->account_id = value.header.account_id;
+    int index = checkLoginAccount(value.header);
+    if (index != -1)
+    {
+        if (transferChecks(value, index, sHeader, sTransfer)) //mudar nome da função
+        {
+            return;
+        }
+
+        fflush(stdout);
+
+        for (int i = 0; i <= arrayIndex; i++)
+        {
+            if (finishTransfer(value, index, i, sHeader, sTransfer))
+            {
+                return;
+            }
+        }
+
+        sHeader->ret_code = RC_ID_NOT_FOUND;
+        sTransfer->balance = bankAccounts[index].balance;
+    }
+    else
+    {
+        sHeader->ret_code = RC_LOGIN_FAIL;
+    }
+}
+
+int opUser(tlv_request_t tlv, rep_header_t *sHeader, rep_transfer_t *sTransfer)
+{
+    if (tlv.value.header.account_id == ADMIN_ACCOUNT_ID)
+    {
+        if (tlv.type == OP_BALANCE)
+        {
+            sHeader->ret_code = RC_OP_NALLOW;
+            sHeader->account_id = tlv.value.header.account_id;
+            return 1;
+        }
+        else if (tlv.type == OP_TRANSFER)
+        {
+            sHeader->ret_code = RC_OP_NALLOW;
+            sHeader->account_id = tlv.value.header.account_id;
+            sTransfer->balance = bankAccounts[ADMIN_ACCOUNT_ID].balance;
+            return 1;
+        }
+    }
+
+    if (tlv.value.header.account_id != ADMIN_ACCOUNT_ID)
+    {
+        if (tlv.type == OP_CREATE_ACCOUNT || tlv.type == OP_SHUTDOWN)
+        {
+            sHeader->ret_code = RC_OP_NALLOW;
+            sHeader->account_id = tlv.value.header.account_id;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBalance, rep_transfer_t *sTransfer, rep_value_t *sValue)
+{
+    if (opUser(tlv, sHeader, sTransfer))
+    {
+        return 0;
+    }
+
     switch (tlv.type)
     {
     case OP_CREATE_ACCOUNT:
-        createNewAccount(tlv.value.create);
+        createNewAccount(tlv.value.create, sHeader);
         break;
 
     case OP_BALANCE:
-        checkBalance(tlv.value.header);
+        checkBalance(tlv.value.header, sHeader, sBalance);
+        sValue->balance = *sBalance;
         break;
-    
+
     case OP_TRANSFER:
-        bankTransfer(tlv.value);
+        bankTransfer(tlv.value, sHeader, sTransfer);
+        sValue->transfer = *sTransfer;
         break;
 
     case OP_SHUTDOWN:
@@ -172,9 +244,17 @@ int RequestHandler(tlv_request_t tlv)
     return 0;
 }
 
+char *getFIFOName(tlv_request_t tlv)
+{
+    int pid = tlv.value.header.pid;
+    char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
+    sprintf(pathFIFO, "%s%d", USER_FIFO_PATH_PREFIX, pid);
+
+    return pathFIFO;
+}
+
 int main(int argc, char *argv[])
 {
-
     if (argc != 3)
     {
         printf("Usage: %s nThreads password \n", argv[0]);
@@ -182,34 +262,62 @@ int main(int argc, char *argv[])
     }
 
     char pass[MAX_PASSWORD_LEN];
-    strcpy(pass, argv[argc-1]);
+    strcpy(pass, argv[argc - 1]);
 
-    createAdmin(argc, argv, pass);
+    createAdmin(pass);
+
+    rep_header_t sHeader;
+    rep_balance_t sBalance;
+    rep_transfer_t sTransfer;
+    rep_value_t sValue;
 
     tlv_request_t tlv;
+    tlv_reply_t *rTlv = (tlv_reply_t *)malloc(sizeof(struct tlv_reply));
 
     mkfifo(SERVER_FIFO_PATH, 0666);
 
-    while(1)
-    {  
-        int fifo = open(SERVER_FIFO_PATH, O_RDONLY); 
-        int r;
+    while (1)
+    {
+        int serverFIFO = open(SERVER_FIFO_PATH, O_RDONLY);
 
-        if((r=read(fifo, &tlv, sizeof(tlv_request_t))) >= 0)
-        {   
-            if(RequestHandler(tlv) == -1)
+        if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) >= 0)
+        {
+            if (requestHandler(tlv, &sHeader, &sBalance, &sTransfer, &sValue) == -1)
             {
-                if(serverDown(tlv.value.header))
-                {
-                    close(fifo);
-                    break;
-                }   
+                close(serverFIFO);
+                break;
+            }
+            else
+            {
+                sValue.header = sHeader;
+                rTlv->value.header = sValue.header;
+                rTlv->value.balance = sValue.balance;
+                rTlv->value.transfer = sValue.transfer;
+                rTlv->type = tlv.type;
+                rTlv->length = sizeof(sValue) + sizeof(tlv.type);
             }
         }
 
-        close(fifo);
-    }
-        unlink(SERVER_FIFO_PATH);  
+        close(serverFIFO);
 
+        char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
+        strcpy(pathFIFO, getFIFOName(tlv));
+
+        int userFIFO = open(pathFIFO, O_WRONLY);
+
+        if (userFIFO == -1)
+        {
+
+            close(userFIFO);
+            continue;
+        }
+        printf("\nid - %d\n", rTlv->value.header.account_id);
+        printf("retorno - %d", rTlv->value.header.ret_code);
+        fflush(stdout);
+        write(userFIFO, rTlv, sizeof(*rTlv));
+        close(userFIFO);
+    }
+
+    unlink(SERVER_FIFO_PATH);
     return 0;
 }

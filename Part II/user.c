@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 #include "types.h"
 #include "user.h"
@@ -17,7 +18,7 @@ req_transfer_t transfer;
 req_header_t header;
 req_value_t value;
 
-void init(int argc, char *argv[], tlv_request_t* tlv)
+void init(int argc, char *argv[], tlv_request_t *tlv)
 {
     if (argc != 6)
     {
@@ -33,8 +34,7 @@ void init(int argc, char *argv[], tlv_request_t* tlv)
 
     tlv->type = op;
     tlv->value = value;
-    tlv->length =  sizeof(value) + sizeof(op);
-
+    tlv->length = sizeof(value) + sizeof(op);
 }
 
 void fillHeader(char *argv[])
@@ -45,7 +45,7 @@ void fillHeader(char *argv[])
     validateDelay(argv[3]);
     header.op_delay_ms = atoi(argv[3]);
 
-    value.header= header;
+    value.header = header;
 }
 
 void fillOperationInfo(int op, char *argList)
@@ -61,7 +61,6 @@ void fillOperationInfo(int op, char *argList)
         createAccount.account_id = atoi(tok);
 
         tok = strtok(NULL, " ");
-        printf("%s", tok);
         validateBalance(tok);
         createAccount.balance = atoi(tok);
 
@@ -90,23 +89,49 @@ void fillOperationInfo(int op, char *argList)
     }
 }
 
+char *getFIFOName()
+{
+    int pid = getpid();
+    char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
+    sprintf(pathFIFO, "%s%d", USER_FIFO_PATH_PREFIX, pid);
+    printf("\ncodigo do fifo - %s\n", pathFIFO);
+    fflush(stdout);
+
+    return pathFIFO;
+}
+
 int main(int argc, char *argv[])
 {
-    tlv_request_t* tlv = (tlv_request_t *) malloc(sizeof(struct tlv_request));
+    char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
+    strcpy(pathFIFO, getFIFOName());
+    mkfifo(pathFIFO, 0666);
+    tlv_request_t *tlv = (tlv_request_t *)malloc(sizeof(struct tlv_request));
+    tlv_reply_t rTlv;
+
     init(argc, argv, tlv);
 
-    int fifo = open(SERVER_FIFO_PATH, O_WRONLY);
-    if (fifo == -1)
+    int serverFIFO = open(SERVER_FIFO_PATH, O_WRONLY);
+
+    if (serverFIFO == -1)
     {
-        printf("burroooon %d", errno);
-        perror("");
+        printf("sync error ");
         return 1;
     }
 
-    write(fifo, tlv, sizeof(*tlv));//talvez malloc
-    printf("%s",tlv->value.header.password);
-    printf("escrevi \n");
-    close(fifo);
+    write(serverFIFO, tlv, sizeof(*tlv));
+    close(serverFIFO);
+
+    int userFIFO = open(pathFIFO, O_RDONLY);
+
+    if (read(userFIFO, &rTlv, sizeof(rTlv)) > 0)
+    {
+        printf("id - %d\n", rTlv.value.header.account_id);
+        printf("retorno - %d\n", rTlv.value.header.ret_code);
+        fflush(stdout);
+    }
+
+    close(userFIFO);
+    unlink(pathFIFO);
 
     return 0;
 }
