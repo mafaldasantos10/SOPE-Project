@@ -79,7 +79,7 @@ typedef struct req_header {
 /**
  * @brief Required arguments for account creation request.
  */
-typedef struct req_create_account {
+typedef struct  {
   uint32_t account_id;
   uint32_t balance;
   char password[MAX_PASSWORD_LEN + 1];
