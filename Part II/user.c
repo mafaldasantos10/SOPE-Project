@@ -13,12 +13,8 @@
 #include "utility.h"
 
 op_type_t op;
-req_create_account_t createAccount;
-req_transfer_t transfer;
-req_header_t header;
-req_value_t value;
 
-void init(int argc, char *argv[], tlv_request_t *tlv)
+void init(int argc, char *argv[], tlv_request_t *tlv, req_create_account_t *createAccount, req_transfer_t *transfer, req_header_t *header, req_value_t *value)
 {
     if (argc != 6)
     {
@@ -28,27 +24,27 @@ void init(int argc, char *argv[], tlv_request_t *tlv)
 
     op = atoi(argv[4]);
 
-    fillOperationInfo(op, argv[5]);
+    fillOperationInfo(op, argv[5], createAccount, transfer, value);
 
-    fillHeader(argv);
+    fillHeader(argv, header, value);
 
     tlv->type = op;
-    tlv->value = value;
+    tlv->value = *value;
     tlv->length = sizeof(value) + sizeof(op);
 }
 
-void fillHeader(char *argv[])
+void fillHeader(char *argv[], req_header_t *header, req_value_t *value)
 {
-    header.pid = getpid();
-    header.account_id = atoi(argv[1]);
-    strcpy(header.password, argv[2]);
+    header->pid = getpid();
+    header->account_id = atoi(argv[1]);
+    strcpy(header->password, argv[2]);
     validateDelay(argv[3]);
-    header.op_delay_ms = atoi(argv[3]);
+    header->op_delay_ms = atoi(argv[3]);
 
-    value.header = header;
+    value->header = *header;
 }
 
-void fillOperationInfo(int op, char *argList)
+void fillOperationInfo(int op, char *argList, req_create_account_t *createAccount, req_transfer_t *transfer, req_value_t *value)
 {
     char *tok;
 
@@ -58,30 +54,30 @@ void fillOperationInfo(int op, char *argList)
 
         tok = strtok(argList, " ");
         validateAccountID(tok);
-        createAccount.account_id = atoi(tok);
+        createAccount->account_id = atoi(tok);
 
         tok = strtok(NULL, " ");
         validateBalance(tok);
-        createAccount.balance = atoi(tok);
+        createAccount->balance = atoi(tok);
 
         tok = strtok(NULL, " ");
         validatePassword(tok);
-        strcpy(createAccount.password, tok);
+        strcpy(createAccount->password, tok);
 
-        value.create = createAccount;
+        value->create = *createAccount;
         break;
 
     case OP_TRANSFER: // destinyID ammount€
 
         tok = strtok(argList, " ");
         validateAccountID(tok);
-        transfer.account_id = atoi(tok);
+        transfer->account_id = atoi(tok);
 
         tok = strtok(NULL, " ");
         validateAmount(tok);
-        transfer.amount = atoi(tok);
+        transfer->amount = atoi(tok);
 
-        value.transfer = transfer;
+        value->transfer = *transfer;
         break;
 
     default:
@@ -100,20 +96,22 @@ char *getFIFOName()
     return pathFIFO;
 }
 
-void writeRequest(tlv_request_t *tlv){
+void writeRequest(tlv_request_t *tlv)
+{
     int serverFIFO = open(SERVER_FIFO_PATH, O_WRONLY);
 
     if (serverFIFO == -1)
     {
         printf("sync error ");
-        exit(1);      
+        exit(1);
     }
 
     write(serverFIFO, tlv, sizeof(*tlv));
     close(serverFIFO);
 }
 
-void readReply(tlv_reply_t reply, char *fifo) {
+void readReply(tlv_reply_t reply, char *fifo)
+{
     int userFIFO = open(fifo, O_RDONLY);
 
     if (read(userFIFO, &reply, sizeof(reply)) > 0)
@@ -132,10 +130,15 @@ int main(int argc, char *argv[])
     tlv_request_t *tlv = (tlv_request_t *)malloc(sizeof(struct tlv_request));
     tlv_reply_t reply;
 
+    req_create_account_t createAccount;
+    req_transfer_t transfer;
+    req_header_t header;
+    req_value_t value;
+
     strcpy(pathFIFO, getFIFOName());
     mkfifo(pathFIFO, 0666);
 
-    init(argc, argv, tlv);
+    init(argc, argv, tlv, &createAccount, &transfer, &header, &value);
     writeRequest(tlv);
     readReply(reply, pathFIFO);
 

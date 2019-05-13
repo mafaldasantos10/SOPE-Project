@@ -7,12 +7,42 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <pthread.h>
 
 #include "utility.h"
 #include "server.h"
 
+#define MAX_SAVED_REQUESTS 20
+
 int arrayIndex = 0;
 bank_account_t bankAccounts[MAX_BANK_ACCOUNTS];
+tlv_request_t requestQueue[MAX_SAVED_REQUESTS];
+int inputIndex = 0, outputIndex = 0;
+int slots = MAX_SAVED_REQUESTS, requests = 0;
+
+//Synchronitazion Mechanisms
+pthread_mutex_t queueLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t slotsLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t requestsLock = PTHREAD_MUTEX_INITIALIZER;
+
+pthread_cond_t slotsCond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t requestsCond = PTHREAD_COND_INITIALIZER;
+
+void insertRequest(tlv_request_t *req)
+{
+    pthread_mutex_lock(&queueLock);
+    requestQueue[inputIndex] = *req;
+    inputIndex = (inputIndex + 1) % MAX_SAVED_REQUESTS;
+    pthread_mutex_unlock(&queueLock);
+}
+
+void getRequest(tlv_request_t *req)
+{
+    pthread_mutex_lock(&queueLock);
+    *req = requestQueue[outputIndex];
+    outputIndex = (outputIndex + 1) % MAX_SAVED_REQUESTS;
+    pthread_mutex_unlock(&queueLock);
+}
 
 void createAdmin(char *pass)
 {
@@ -244,24 +274,28 @@ int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBal
     return 0;
 }
 
-int consumeRequest()
+void *consumeRequest(void *arg)
 {
     rep_header_t sHeader;
     rep_balance_t sBalance;
     rep_transfer_t sTransfer;
     rep_value_t sValue;
+    tlv_reply_t *rTlv = (tlv_reply_t *)malloc(sizeof(struct tlv_reply));
 
     tlv_request_t tlv;
-    tlv_reply_t *rTlv = (tlv_reply_t *)malloc(sizeof(struct tlv_reply));
-    
-    int serverFIFO = open(SERVER_FIFO_PATH, O_RDONLY);
 
-    if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) >= 0)
+    while (1)
     {
+        pthread_mutex_lock(&requestsLock);
+        while (requests <= 0)
+            pthread_cond_wait(&requestsCond, &requestsLock);
+        requests--;
+        pthread_mutex_unlock(&requestsLock);
+
+        getRequest(&tlv);
+
         if (requestHandler(tlv, &sHeader, &sBalance, &sTransfer, &sValue) == -1)
         {
-            close(serverFIFO);
-            return 1;
         }
         else
         {
@@ -272,10 +306,13 @@ int consumeRequest()
             rTlv->type = tlv.type;
             rTlv->length = sizeof(sValue) + sizeof(tlv.type);
         }
+
+        pthread_mutex_lock(&slotsLock);
+        slots++;
+        pthread_cond_signal(&slotsCond);
+        pthread_mutex_unlock(&slotsLock);
     }
-
-    close(serverFIFO);
-
+    /*
     char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
     strcpy(pathFIFO, getFIFOName(tlv));
 
@@ -291,11 +328,34 @@ int consumeRequest()
     printf("retorno - %d\n", rTlv->value.header.ret_code);
     fflush(stdout);
     write(userFIFO, rTlv, sizeof(*rTlv));
-    close(userFIFO);
+    close(userFIFO);*/
+
+    return 0;
 }
 
-void produceRequest() {
-    
+void produceRequest()
+{
+    int serverFIFO = open(SERVER_FIFO_PATH, O_RDONLY);
+    tlv_request_t tlv;
+
+    if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) < 0)
+    {
+        fprintf(stderr, "No request to read. Moving on...");
+        return;
+    }
+
+    pthread_mutex_lock(&slotsLock);
+    while (slots <= 0)
+        pthread_cond_wait(&slotsCond, &slotsLock);
+    slots--;
+    pthread_mutex_unlock(&slotsLock);
+
+    insertRequest(&tlv);
+
+    pthread_mutex_lock(&requestsLock);
+    requests++;
+    pthread_cond_signal(&requestsCond);
+    pthread_mutex_unlock(&requestsLock);
 }
 
 char *getFIFOName(tlv_request_t tlv)
@@ -313,8 +373,9 @@ void bankCycle()
 
     while (1)
     {
-        if(consumeRequest())
-            break;
+        produceRequest();
+
+        //consumeRequest();
     }
 
     unlink(SERVER_FIFO_PATH);
