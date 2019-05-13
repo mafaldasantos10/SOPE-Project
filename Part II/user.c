@@ -100,37 +100,45 @@ char *getFIFOName()
     return pathFIFO;
 }
 
-int main(int argc, char *argv[])
-{
-    char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
-    strcpy(pathFIFO, getFIFOName());
-    mkfifo(pathFIFO, 0666);
-    tlv_request_t *tlv = (tlv_request_t *)malloc(sizeof(struct tlv_request));
-    tlv_reply_t rTlv;
-
-    init(argc, argv, tlv);
-
+void writeRequest(tlv_request_t *tlv){
     int serverFIFO = open(SERVER_FIFO_PATH, O_WRONLY);
 
     if (serverFIFO == -1)
     {
         printf("sync error ");
-        return 1;
+        exit(1);      
     }
 
     write(serverFIFO, tlv, sizeof(*tlv));
     close(serverFIFO);
+}
 
-    int userFIFO = open(pathFIFO, O_RDONLY);
+void readReply(tlv_reply_t reply, char *fifo) {
+    int userFIFO = open(fifo, O_RDONLY);
 
-    if (read(userFIFO, &rTlv, sizeof(rTlv)) > 0)
+    if (read(userFIFO, &reply, sizeof(reply)) > 0)
     {
-        printf("id - %d\n", rTlv.value.header.account_id);
-        printf("retorno - %d\n", rTlv.value.header.ret_code);
+        printf("id - %d\n", reply.value.header.account_id);
+        printf("retorno - %d\n", reply.value.header.ret_code);
         fflush(stdout);
     }
 
     close(userFIFO);
+}
+
+int main(int argc, char *argv[])
+{
+    char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
+    tlv_request_t *tlv = (tlv_request_t *)malloc(sizeof(struct tlv_request));
+    tlv_reply_t reply;
+
+    strcpy(pathFIFO, getFIFOName());
+    mkfifo(pathFIFO, 0666);
+
+    init(argc, argv, tlv);
+    writeRequest(tlv);
+    readReply(reply, pathFIFO);
+
     unlink(pathFIFO);
 
     return 0;

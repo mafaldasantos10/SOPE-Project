@@ -11,7 +11,7 @@
 void createAdmin(char *pass);
 
 /**
- * @brief Verifies if there if the pair id and password already exists
+ * @brief Verifies if the pair id and password already exists
  * 
  * @param req_header_t struct header
  * @return Int If the user already exits the index in the account array, otherwise -1
@@ -97,10 +97,12 @@ int opUser(tlv_request_t tlv, rep_header_t *sHeader, rep_transfer_t *sTransfer);
  */
 int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBalance, rep_transfer_t *sTransfer, rep_value_t *sValue);
 
-    /**
+/**
  * @brief Generates the user FIFO path based on its PID
  * 
  * @param tlv_request_t tlv Struct with the account information
  * @return char* FIFO path
  */
-    char *getFIFOName(tlv_request_t tlv);
+char *getFIFOName(tlv_request_t tlv);
+
+void bankCycle();

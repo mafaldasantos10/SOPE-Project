@@ -244,6 +244,60 @@ int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBal
     return 0;
 }
 
+int consumeRequest()
+{
+    rep_header_t sHeader;
+    rep_balance_t sBalance;
+    rep_transfer_t sTransfer;
+    rep_value_t sValue;
+
+    tlv_request_t tlv;
+    tlv_reply_t *rTlv = (tlv_reply_t *)malloc(sizeof(struct tlv_reply));
+    
+    int serverFIFO = open(SERVER_FIFO_PATH, O_RDONLY);
+
+    if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) >= 0)
+    {
+        if (requestHandler(tlv, &sHeader, &sBalance, &sTransfer, &sValue) == -1)
+        {
+            close(serverFIFO);
+            return 1;
+        }
+        else
+        {
+            sValue.header = sHeader;
+            rTlv->value.header = sValue.header;
+            rTlv->value.balance = sValue.balance;
+            rTlv->value.transfer = sValue.transfer;
+            rTlv->type = tlv.type;
+            rTlv->length = sizeof(sValue) + sizeof(tlv.type);
+        }
+    }
+
+    close(serverFIFO);
+
+    char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
+    strcpy(pathFIFO, getFIFOName(tlv));
+
+    int userFIFO = open(pathFIFO, O_WRONLY);
+
+    if (userFIFO == -1)
+    {
+        close(userFIFO);
+        return 0;
+    }
+
+    printf("\nid - %d\n", rTlv->value.header.account_id);
+    printf("retorno - %d\n", rTlv->value.header.ret_code);
+    fflush(stdout);
+    write(userFIFO, rTlv, sizeof(*rTlv));
+    close(userFIFO);
+}
+
+void produceRequest() {
+    
+}
+
 char *getFIFOName(tlv_request_t tlv)
 {
     int pid = tlv.value.header.pid;
@@ -253,11 +307,24 @@ char *getFIFOName(tlv_request_t tlv)
     return pathFIFO;
 }
 
+void bankCycle()
+{
+    mkfifo(SERVER_FIFO_PATH, 0666);
+
+    while (1)
+    {
+        if(consumeRequest())
+            break;
+    }
+
+    unlink(SERVER_FIFO_PATH);
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 3)
     {
-        printf("Usage: %s nThreads password \n", argv[0]);
+        printf("Usage: %s numThreads password \n", argv[0]);
         exit(1);
     }
 
@@ -266,58 +333,7 @@ int main(int argc, char *argv[])
 
     createAdmin(pass);
 
-    rep_header_t sHeader;
-    rep_balance_t sBalance;
-    rep_transfer_t sTransfer;
-    rep_value_t sValue;
+    bankCycle();
 
-    tlv_request_t tlv;
-    tlv_reply_t *rTlv = (tlv_reply_t *)malloc(sizeof(struct tlv_reply));
-
-    mkfifo(SERVER_FIFO_PATH, 0666);
-
-    while (1)
-    {
-        int serverFIFO = open(SERVER_FIFO_PATH, O_RDONLY);
-
-        if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) >= 0)
-        {
-            if (requestHandler(tlv, &sHeader, &sBalance, &sTransfer, &sValue) == -1)
-            {
-                close(serverFIFO);
-                break;
-            }
-            else
-            {
-                sValue.header = sHeader;
-                rTlv->value.header = sValue.header;
-                rTlv->value.balance = sValue.balance;
-                rTlv->value.transfer = sValue.transfer;
-                rTlv->type = tlv.type;
-                rTlv->length = sizeof(sValue) + sizeof(tlv.type);
-            }
-        }
-
-        close(serverFIFO);
-
-        char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
-        strcpy(pathFIFO, getFIFOName(tlv));
-
-        int userFIFO = open(pathFIFO, O_WRONLY);
-
-        if (userFIFO == -1)
-        {
-
-            close(userFIFO);
-            continue;
-        }
-        printf("\nid - %d\n", rTlv->value.header.account_id);
-        printf("retorno - %d", rTlv->value.header.ret_code);
-        fflush(stdout);
-        write(userFIFO, rTlv, sizeof(*rTlv));
-        close(userFIFO);
-    }
-
-    unlink(SERVER_FIFO_PATH);
     return 0;
 }

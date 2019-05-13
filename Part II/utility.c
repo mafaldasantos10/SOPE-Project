@@ -103,12 +103,17 @@ char *generateSalt()
 char *generateHash(char *salt, char *password)
 {
     FILE *fpout;
-    char *hash = malloc(sizeof(HASH_LEN));
+    char *hash = malloc(HASH_LEN);
     char *cmd = malloc(sizeof("echo -n | sha256sum") + MAX_PASSWORD_LEN + SALT_LEN + 1);
 
     sprintf(cmd, "echo -n %s%s | sha256sum", password, salt);
 
     fpout = popen(cmd, "r");
+
+    if(fpout == NULL){
+        perror("Generating Hash");
+        exit(2);
+    }
     fgets(hash, HASH_LEN, fpout);
     pclose(fpout);
 
