@@ -3,6 +3,8 @@
 #include "types.h"
 #include "user.h"
 
+void insertRequest(tlv_request_t *req);
+void getRequest(tlv_request_t *req);
 /**
  * @brief Adds the admin to the position 0 of the array bankAccounts
  * 
@@ -10,6 +12,7 @@
  */
 void createAdmin(char *pass);
 
+void createBankOffices(int numThreads);
 /**
  * @brief Verifies if the pair id and password already exists
  * 
@@ -97,6 +100,10 @@ int opUser(tlv_request_t tlv, rep_header_t *sHeader, rep_transfer_t *sTransfer);
  */
 int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBalance, rep_transfer_t *sTransfer, rep_value_t *sValue);
 
+void *consumeRequest(void *arg);
+
+void produceRequest(tlv_request_t tlv);
+
 /**
  * @brief Generates the user FIFO path based on its PID
  * 
@@ -105,4 +112,4 @@ int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBal
  */
 char *getFIFOName(tlv_request_t tlv);
 
-void bankCycle();
+void bankCycle(int numThreads);

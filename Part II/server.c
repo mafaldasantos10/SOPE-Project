@@ -16,6 +16,7 @@
 
 int arrayIndex = 0;
 bank_account_t bankAccounts[MAX_BANK_ACCOUNTS];
+pthread_t thread[MAX_BANK_OFFICES];
 tlv_request_t requestQueue[MAX_SAVED_REQUESTS];
 int inputIndex = 0, outputIndex = 0;
 int slots = MAX_SAVED_REQUESTS, requests = 0;
@@ -57,6 +58,20 @@ void createAdmin(char *pass)
     bankAccounts[0] = account;
 
     free(salt);
+}
+
+void createBankOffices(int numThreads)
+{
+    int i;
+
+    for (i = 1; i <= numThreads; i++)
+    {
+        if (pthread_create(&(thread[i]), NULL, consumeRequest, NULL) != 0)
+        {
+            perror("Creating Threads");
+            exit(1);
+        }
+    }
 }
 
 int checkLoginAccount(req_header_t header)
@@ -283,8 +298,9 @@ void *consumeRequest(void *arg)
     tlv_reply_t *rTlv = (tlv_reply_t *)malloc(sizeof(struct tlv_reply));
 
     tlv_request_t tlv;
+    int shutdown = 0;
 
-    while (1)
+    while (!shutdown)
     {
         pthread_mutex_lock(&requestsLock);
         while (requests <= 0)
@@ -296,6 +312,7 @@ void *consumeRequest(void *arg)
 
         if (requestHandler(tlv, &sHeader, &sBalance, &sTransfer, &sValue) == -1)
         {
+            shutdown = 1;
         }
         else
         {
@@ -307,43 +324,36 @@ void *consumeRequest(void *arg)
             rTlv->length = sizeof(sValue) + sizeof(tlv.type);
         }
 
+        char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
+        strcpy(pathFIFO, getFIFOName(tlv));
+
+        int userFIFO = open(pathFIFO, O_WRONLY);
+
+        if (userFIFO == -1)
+        {
+            perror("Could not open reply fifo");
+            close(userFIFO);
+            continue;
+        }
+
+        printf("\nid - %d\n", rTlv->value.header.account_id);
+        printf("retorno - %d\n", rTlv->value.header.ret_code);
+        fflush(stdout);
+        write(userFIFO, rTlv, sizeof(*rTlv));
+        close(userFIFO);
+
         pthread_mutex_lock(&slotsLock);
         slots++;
         pthread_cond_signal(&slotsCond);
         pthread_mutex_unlock(&slotsLock);
     }
-    /*
-    char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
-    strcpy(pathFIFO, getFIFOName(tlv));
 
-    int userFIFO = open(pathFIFO, O_WRONLY);
-
-    if (userFIFO == -1)
-    {
-        close(userFIFO);
-        return 0;
-    }
-
-    printf("\nid - %d\n", rTlv->value.header.account_id);
-    printf("retorno - %d\n", rTlv->value.header.ret_code);
-    fflush(stdout);
-    write(userFIFO, rTlv, sizeof(*rTlv));
-    close(userFIFO);*/
-
-    return 0;
+    pthread_exit(NULL);
+    // return 0;
 }
 
-void produceRequest()
+void produceRequest(tlv_request_t tlv)
 {
-    int serverFIFO = open(SERVER_FIFO_PATH, O_RDONLY);
-    tlv_request_t tlv;
-
-    if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) < 0)
-    {
-        fprintf(stderr, "No request to read. Moving on...");
-        return;
-    }
-
     pthread_mutex_lock(&slotsLock);
     while (slots <= 0)
         pthread_cond_wait(&slotsCond, &slotsLock);
@@ -367,18 +377,32 @@ char *getFIFOName(tlv_request_t tlv)
     return pathFIFO;
 }
 
-void bankCycle()
+void bankCycle(int numThreads)
 {
-    mkfifo(SERVER_FIFO_PATH, 0666);
+    int serverFIFO = open(SERVER_FIFO_PATH, O_RDONLY);
+    tlv_request_t tlv;
+    int shutdown = 0;
 
-    while (1)
+    while (!shutdown)
     {
-        produceRequest();
+        if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) < 0)
+        {
+            fprintf(stderr, "No request to read. Moving on...");
+            continue;
+        }
 
-        //consumeRequest();
+        if (tlv.type == OP_SHUTDOWN)
+        {
+            int it;
+            for (it = 0; it < numThreads; it++)
+            {
+                produceRequest(tlv);
+            }
+            shutdown = 1;
+        }
+        else
+            produceRequest(tlv);
     }
-
-    unlink(SERVER_FIFO_PATH);
 }
 
 int main(int argc, char *argv[])
@@ -389,12 +413,19 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    char pass[MAX_PASSWORD_LEN];
-    strcpy(pass, argv[argc - 1]);
+    // char pass[MAX_PASSWORD_LEN];
+    // strcpy(pass, argv[argc - 1]);
+    int numThreads = atoi(argv[1]);
 
-    createAdmin(pass);
+    createAdmin(argv[2]);
 
-    bankCycle();
+    createBankOffices(numThreads);
 
-    return 0;
+    mkfifo(SERVER_FIFO_PATH, 0666);
+
+    bankCycle(numThreads);
+
+    unlink(SERVER_FIFO_PATH);
+
+    pthread_exit(NULL);
 }
