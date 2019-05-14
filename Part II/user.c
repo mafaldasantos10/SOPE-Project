@@ -110,9 +110,9 @@ void writeRequest(tlv_request_t *tlv)
     close(serverFIFO);
 }
 
-void readReply(tlv_reply_t reply, char *fifo)
+void readReply(tlv_reply_t reply, char *pathFIFO)
 {
-    int userFIFO = open(fifo, O_RDONLY);
+    int userFIFO = open(pathFIFO, O_RDONLY);
 
     if (read(userFIFO, &reply, sizeof(reply)) > 0)
     {
