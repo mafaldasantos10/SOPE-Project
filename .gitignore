@@ -3,3 +3,4 @@ user
 server
 .vscode
 *.o
+?log.txt
