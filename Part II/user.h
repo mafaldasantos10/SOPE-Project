@@ -45,13 +45,15 @@ char *getFIFOname();
  * @brief Reads the FIFO from the server with the reply
  * 
  * @param tlv_request_t *tlv Struct with the request for the server
+ * @param int fd ulog.txt file descriptor
  */
-void writeRequest(tlv_request_t *tlv);
+void writeRequest(tlv_request_t *tlv, int fd);
 
 /**
  * @brief Reads the FIFO from the server with the reply
  * 
  * @param tlv_reply_t reply Struct with the reply from the server
  * @param char* fifo FIFO path of the userFifo
+ * @param int fd ulog.txt file descriptor
  */
-void readReply(tlv_reply_t reply, char *fifo);
+void readReply(tlv_reply_t reply, char *fifo, int fd);

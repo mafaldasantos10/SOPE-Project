@@ -11,6 +11,7 @@
 #include "types.h"
 #include "user.h"
 #include "utility.h"
+#include "sope.h"
 
 op_type_t op;
 
@@ -96,7 +97,7 @@ char *getFIFOName()
     return pathFIFO;
 }
 
-void writeRequest(tlv_request_t *tlv)
+void writeRequest(tlv_request_t *tlv, int fd)
 {
     int serverFIFO = open(SERVER_FIFO_PATH, O_WRONLY);
 
@@ -105,12 +106,13 @@ void writeRequest(tlv_request_t *tlv)
         printf("sync error ");
         exit(1);
     }
+    logRequest(fd, getpid(), tlv);
 
     write(serverFIFO, tlv, sizeof(*tlv));
     close(serverFIFO);
 }
 
-void readReply(tlv_reply_t reply, char *pathFIFO)
+void readReply(tlv_reply_t reply, char *pathFIFO, int fd)
 {
     int userFIFO = open(pathFIFO, O_RDONLY);
 
@@ -119,6 +121,9 @@ void readReply(tlv_reply_t reply, char *pathFIFO)
         printf("id - %d\n", reply.value.header.account_id);
         printf("retorno - %d\n", reply.value.header.ret_code);
         fflush(stdout);
+
+        logReply(fd, getpid(), &reply);
+
     }
 
     close(userFIFO);
@@ -129,7 +134,7 @@ int main(int argc, char *argv[])
     char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
     tlv_request_t *tlv = (tlv_request_t *)malloc(sizeof(struct tlv_request));
     tlv_reply_t reply;
-
+    int fd= open(USER_LOGFILE, O_WRONLY | O_CREAT | O_APPEND | O_EXCL, 0664);
     req_create_account_t createAccount;
     req_transfer_t transfer;
     req_header_t header;
@@ -139,9 +144,10 @@ int main(int argc, char *argv[])
     mkfifo(pathFIFO, 0666);
 
     init(argc, argv, tlv, &createAccount, &transfer, &header, &value);
-    writeRequest(tlv);
-    readReply(reply, pathFIFO);
+    writeRequest(tlv, fd);
+    readReply(reply, pathFIFO, fd);
 
+    close(fd);
     unlink(pathFIFO);
 
     return 0;
