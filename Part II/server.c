@@ -327,12 +327,11 @@ void *consumeRequest(void *arg)
         char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
         strcpy(pathFIFO, getFIFOName(tlv));
 
-        int userFIFO = open(pathFIFO, O_WRONLY);
+        int userFIFO = open(pathFIFO, O_WRONLY|O_NONBLOCK);
 
-        if (userFIFO == -1)
+        if (userFIFO < 0)
         {
             perror("Could not open reply fifo");
-            close(userFIFO);
             continue;
         }
 
@@ -348,8 +347,9 @@ void *consumeRequest(void *arg)
         pthread_mutex_unlock(&slotsLock);
     }
 
-    pthread_exit(NULL);
-    // return 0;
+    printf("\nThread Finished!\n");
+    // pthread_exit(NULL);
+    return 0;
 }
 
 void produceRequest(tlv_request_t tlv)
@@ -385,23 +385,20 @@ void bankCycle(int numThreads)
 
     while (!shutdown)
     {
-        if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) < 0)
+        if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) > 0)
         {
-            fprintf(stderr, "No request to read. Moving on...");
-            continue;
-        }
-
-        if (tlv.type == OP_SHUTDOWN)
-        {
-            int it;
-            for (it = 0; it < numThreads; it++)
+            if (tlv.type == OP_SHUTDOWN)
             {
-                produceRequest(tlv);
+                int it;
+                for (it = 0; it < numThreads; it++)
+                {
+                    produceRequest(tlv);
+                }
+                shutdown = 1;
             }
-            shutdown = 1;
+            else
+                produceRequest(tlv);
         }
-        else
-            produceRequest(tlv);
     }
 }
 
