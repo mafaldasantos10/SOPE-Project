@@ -123,7 +123,6 @@ void readReply(tlv_reply_t reply, char *pathFIFO, int fd)
         fflush(stdout);
 
         logReply(fd, getpid(), &reply);
-
     }
 
     close(userFIFO);
@@ -134,7 +133,7 @@ int main(int argc, char *argv[])
     char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
     tlv_request_t *tlv = (tlv_request_t *)malloc(sizeof(struct tlv_request));
     tlv_reply_t reply;
-    int fd= open(USER_LOGFILE, O_WRONLY | O_CREAT | O_APPEND | O_EXCL, 0664);
+    int fd= open(USER_LOGFILE, O_WRONLY | O_CREAT | O_APPEND, 0664);
     req_create_account_t createAccount;
     req_transfer_t transfer;
     req_header_t header;

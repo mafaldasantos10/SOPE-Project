@@ -25,6 +25,7 @@ int slots = MAX_SAVED_REQUESTS, requests = 0;
 pthread_mutex_t queueLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t slotsLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t requestsLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t writeLock = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t slotsCond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t requestsCond = PTHREAD_COND_INITIALIZER;
@@ -135,17 +136,10 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
     int index = checkLoginAccount(header);
     printf("loginCheck %d, index \n", index);
 
-    if (index > -1)
-    {
-        printf("account ballance - %d", bankAccounts[index].balance);
-        fflush(stdout);
-        sHeader->ret_code = RC_OK;
-        sBalance->balance = bankAccounts[index].balance;
-    }
-    else
-    {
-        sHeader->ret_code = RC_LOGIN_FAIL;
-    }
+    printf("account ballance - %d", bankAccounts[index].balance);
+    fflush(stdout);
+    sHeader->ret_code = RC_OK;
+    sBalance->balance = bankAccounts[index].balance;
 }
 
 int transferChecks(req_value_t value, int index, rep_header_t *sHeader, rep_transfer_t *sTransfer)
@@ -197,30 +191,24 @@ void bankTransfer(req_value_t value, rep_header_t *sHeader, rep_transfer_t *sTra
 {
     sHeader->account_id = value.header.account_id;
     int index = checkLoginAccount(value.header);
-    if (index != -1)
+
+    if (transferChecks(value, index, sHeader, sTransfer)) //mudar nome da função
     {
-        if (transferChecks(value, index, sHeader, sTransfer)) //mudar nome da função
+        return;
+    }
+
+    fflush(stdout);
+
+    for (int i = 0; i <= arrayIndex; i++)
+    {
+        if (finishTransfer(value, index, i, sHeader, sTransfer))
         {
             return;
         }
-
-        fflush(stdout);
-
-        for (int i = 0; i <= arrayIndex; i++)
-        {
-            if (finishTransfer(value, index, i, sHeader, sTransfer))
-            {
-                return;
-            }
-        }
-
-        sHeader->ret_code = RC_ID_NOT_FOUND;
-        sTransfer->balance = bankAccounts[index].balance;
     }
-    else
-    {
-        sHeader->ret_code = RC_LOGIN_FAIL;
-    }
+
+    sHeader->ret_code = RC_ID_NOT_FOUND;
+    sTransfer->balance = bankAccounts[index].balance;
 }
 
 int opUser(tlv_request_t tlv, rep_header_t *sHeader, rep_transfer_t *sTransfer)
@@ -257,6 +245,13 @@ int opUser(tlv_request_t tlv, rep_header_t *sHeader, rep_transfer_t *sTransfer)
 
 int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBalance, rep_transfer_t *sTransfer, rep_value_t *sValue)
 {
+    if (checkLoginAccount(tlv.value.header) == -1)
+    {
+        fprintf(stderr, "Invalid password\n");
+        sHeader->ret_code = RC_LOGIN_FAIL;
+        return 0;
+    }
+
     if (opUser(tlv, sHeader, sTransfer))
     {
         return 0;
@@ -327,11 +322,14 @@ void *consumeRequest(void *arg)
         char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
         strcpy(pathFIFO, getFIFOName(tlv));
 
-        int userFIFO = open(pathFIFO, O_WRONLY|O_NONBLOCK);
+        pthread_mutex_lock(&writeLock);
+        int userFIFO = open(pathFIFO, O_WRONLY | O_NONBLOCK);
 
         if (userFIFO < 0)
         {
-            perror("Could not open reply fifo");
+            pthread_mutex_unlock(&writeLock);    
+            if(!shutdown)
+                perror("Could not open reply fifo");
             continue;
         }
 
@@ -340,6 +338,8 @@ void *consumeRequest(void *arg)
         fflush(stdout);
         write(userFIFO, rTlv, sizeof(*rTlv));
         close(userFIFO);
+        usleep(10); //giving time for the user to close the fifo
+        pthread_mutex_unlock(&writeLock);
 
         pthread_mutex_lock(&slotsLock);
         slots++;
@@ -348,8 +348,7 @@ void *consumeRequest(void *arg)
     }
 
     printf("\nThread Finished!\n");
-    // pthread_exit(NULL);
-    return 0;
+    pthread_exit(NULL);
 }
 
 void produceRequest(tlv_request_t tlv)
@@ -387,7 +386,7 @@ void bankCycle(int numThreads)
     {
         if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) > 0)
         {
-            if (tlv.type == OP_SHUTDOWN)
+            if (tlv.type == OP_SHUTDOWN && checkLoginAccount(tlv.value.header) != -1)
             {
                 int it;
                 for (it = 0; it < numThreads; it++)
@@ -410,9 +409,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // char pass[MAX_PASSWORD_LEN];
-    // strcpy(pass, argv[argc - 1]);
     int numThreads = atoi(argv[1]);
+
+    validatePassword(argv[2]);
 
     createAdmin(argv[2]);
 
