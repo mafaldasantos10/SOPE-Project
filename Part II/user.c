@@ -92,8 +92,6 @@ char *getFIFOName()
     int pid = getpid();
     char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
     sprintf(pathFIFO, "%s%d", USER_FIFO_PATH_PREFIX, pid);
-    printf("\ncodigo do fifo - %s\n", pathFIFO);
-    fflush(stdout);
 
     return pathFIFO;
 }

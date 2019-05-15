@@ -424,7 +424,7 @@ void bankCycle(int numThreads)
     {
         if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) > 0)
         {
-            if (tlv.type == OP_SHUTDOWN && checkLoginAccount(tlv.value.header) != -1)
+            if (tlv.type == OP_SHUTDOWN && checkLoginAccount(tlv.value.header) != -1 && tlv.value.header.account_id == ADMIN_ACCOUNT_ID)
             {
                 int it;
                 for (it = 0; it < numThreads; it++)
