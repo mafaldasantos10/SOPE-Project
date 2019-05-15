@@ -145,7 +145,8 @@ int logSyncDelay(int fd, int id, int sid, uint32_t delay_ms) {
  */
 
 static int atomicPrintf(int fd, const char *format, ...) {
-  static char buffer[PIPE_BUF];
+  //static char buffer[PIPE_BUF]; // replaced
+  char buffer[PIPE_BUF];
   va_list args;
   int ret;
 

@@ -79,7 +79,7 @@ typedef struct req_header {
 /**
  * @brief Required arguments for account creation request.
  */
-typedef struct  {
+typedef struct req_create_account {
   uint32_t account_id;
   uint32_t balance;
   char password[MAX_PASSWORD_LEN + 1];
@@ -126,7 +126,8 @@ typedef struct tlv_request {
  */
 typedef struct rep_header {
   uint32_t account_id;
-  int ret_code;
+  //int ret_code;  // replaced
+  ret_code_t ret_code;
 } __attribute__((packed)) rep_header_t;
 
 /**
