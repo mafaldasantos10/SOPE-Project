@@ -111,8 +111,11 @@ int searchID(uint32_t id)
     return -1;
 }
 
-void createNewAccount(req_create_account_t newAccount, rep_header_t *sHeader)
+void createNewAccount(req_value_t value, rep_header_t *sHeader)
 {
+    bank_account_t account;
+    req_create_account_t newAccount = value.create;
+    
     sHeader->account_id = newAccount.account_id;
 
     if (searchID(newAccount.account_id) > -1)
@@ -121,9 +124,8 @@ void createNewAccount(req_create_account_t newAccount, rep_header_t *sHeader)
         return;
     }
 
-    accountsIndex++;
-    bank_account_t account;
     char *salt = malloc(SALT_LEN);
+    accountsIndex++;
     pthread_mutex_init(&accountLocks[accountsIndex],NULL);
 
     strcpy(salt, generateSalt());
@@ -131,9 +133,12 @@ void createNewAccount(req_create_account_t newAccount, rep_header_t *sHeader)
     strcpy(account.salt, salt);
     account.balance = newAccount.balance;
     account.account_id = newAccount.account_id;
+
     pthread_mutex_lock(&accountLocks[accountsIndex]);
+    usleep(value.header.op_delay_ms*1000);
     bankAccounts[accountsIndex] = account;
     pthread_mutex_unlock(&accountLocks[accountsIndex]);
+    
     sHeader->ret_code = RC_OK;
 
     free(salt);
@@ -145,10 +150,11 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
     int index = checkLoginAccount(header);
     printf("loginCheck %d, index \n", index);
 
+    sHeader->ret_code = RC_OK;
     pthread_mutex_lock(&accountLocks[index]);
+    usleep(header.op_delay_ms*1000);
     printf("account ballance - %d", bankAccounts[index].balance);
     fflush(stdout);
-    sHeader->ret_code = RC_OK;
     sBalance->balance = bankAccounts[index].balance;
     pthread_mutex_unlock(&accountLocks[index]);
 }
@@ -196,14 +202,17 @@ int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeade
         printf("previous amount 1 - %d \n", bankAccounts[source].balance);
         printf("previous amount 2 - %d \n", bankAccounts[dest].balance);
         pthread_mutex_lock(&accountLocks[dest]);
+        usleep(value.header.op_delay_ms*1000);
         bankAccounts[dest].balance += value.transfer.amount;
         pthread_mutex_unlock(&accountLocks[dest]);
         pthread_mutex_lock(&accountLocks[source]);
+        usleep(value.header.op_delay_ms*1000);
         bankAccounts[source].balance -= value.transfer.amount;
         pthread_mutex_unlock(&accountLocks[source]);
         printf("new amount 1 - %d \n", bankAccounts[source].balance);
         printf("new amount 2 - %d \n", bankAccounts[dest].balance);
         fflush(stdout);
+
         sHeader->ret_code = RC_OK;
         pthread_mutex_lock(&accountLocks[source]);
         sTransfer->balance = bankAccounts[source].balance;
@@ -289,7 +298,7 @@ int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBal
     switch (tlv.type)
     {
     case OP_CREATE_ACCOUNT:
-        createNewAccount(tlv.value.create, sHeader);
+        createNewAccount(tlv.value, sHeader);
         break;
 
     case OP_BALANCE:

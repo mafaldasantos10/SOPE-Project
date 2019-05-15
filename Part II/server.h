@@ -35,7 +35,7 @@ int searchID(uint32_t id);
  * @param req_create_account_t newAccount Struct with the new account information
  * @param rep_header_t* sHeader Struct used for the reply
  */
-void createNewAccount(req_create_account_t newAccount, rep_header_t *sHeader);
+void createNewAccount(req_value_t value, rep_header_t *sHeader);
 
 /**
  * @brief Finds the balance of the user account
