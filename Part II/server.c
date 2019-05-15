@@ -14,14 +14,16 @@
 
 #define MAX_SAVED_REQUESTS 20
 
-int arrayIndex = 0;
+int accountsIndex = 0;
 bank_account_t bankAccounts[MAX_BANK_ACCOUNTS];
-pthread_t thread[MAX_BANK_OFFICES];
+bank_office_t offices[MAX_BANK_OFFICES];
+
 tlv_request_t requestQueue[MAX_SAVED_REQUESTS];
 int inputIndex = 0, outputIndex = 0;
 int slots = MAX_SAVED_REQUESTS, requests = 0;
 
 //Synchronitazion Mechanisms
+pthread_mutex_t accountLocks[MAX_BANK_ACCOUNTS];
 pthread_mutex_t queueLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t slotsLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t requestsLock = PTHREAD_MUTEX_INITIALIZER;
@@ -58,6 +60,9 @@ void createAdmin(char *pass)
     account.account_id = ADMIN_ACCOUNT_ID;
     bankAccounts[0] = account;
 
+    offices[0].bankID = 0;
+    offices[0].tid = pthread_self();
+
     free(salt);
 }
 
@@ -67,7 +72,8 @@ void createBankOffices(int numThreads)
 
     for (i = 1; i <= numThreads; i++)
     {
-        if (pthread_create(&(thread[i]), NULL, consumeRequest, NULL) != 0)
+        offices[i].bankID = i;
+        if (pthread_create(&(offices[i].tid), NULL, consumeRequest, NULL) != 0)
         {
             perror("Creating Threads");
             exit(1);
@@ -79,7 +85,7 @@ int checkLoginAccount(req_header_t header)
 {
     char *hash = malloc(HASH_LEN);
 
-    for (int i = 0; i <= arrayIndex; i++)
+    for (int i = 0; i <= accountsIndex; i++)
     {
         hash = generateHash(bankAccounts[i].salt, header.password);
 
@@ -94,7 +100,7 @@ int checkLoginAccount(req_header_t header)
 
 int searchID(uint32_t id)
 {
-    for (int i = 0; i <= arrayIndex; i++)
+    for (int i = 0; i <= accountsIndex; i++)
     {
         if (id == bankAccounts[i].account_id)
         {
@@ -115,16 +121,19 @@ void createNewAccount(req_create_account_t newAccount, rep_header_t *sHeader)
         return;
     }
 
-    arrayIndex++;
+    accountsIndex++;
     bank_account_t account;
     char *salt = malloc(SALT_LEN);
+    pthread_mutex_init(&accountLocks[accountsIndex],NULL);
 
     strcpy(salt, generateSalt());
     strcpy(account.hash, generateHash(salt, newAccount.password));
     strcpy(account.salt, salt);
     account.balance = newAccount.balance;
     account.account_id = newAccount.account_id;
-    bankAccounts[arrayIndex] = account;
+    pthread_mutex_lock(&accountLocks[accountsIndex]);
+    bankAccounts[accountsIndex] = account;
+    pthread_mutex_unlock(&accountLocks[accountsIndex]);
     sHeader->ret_code = RC_OK;
 
     free(salt);
@@ -136,10 +145,12 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
     int index = checkLoginAccount(header);
     printf("loginCheck %d, index \n", index);
 
+    pthread_mutex_lock(&accountLocks[index]);
     printf("account ballance - %d", bankAccounts[index].balance);
     fflush(stdout);
     sHeader->ret_code = RC_OK;
     sBalance->balance = bankAccounts[index].balance;
+    pthread_mutex_unlock(&accountLocks[index]);
 }
 
 int transferChecks(req_value_t value, int index, rep_header_t *sHeader, rep_transfer_t *sTransfer)
@@ -147,40 +158,56 @@ int transferChecks(req_value_t value, int index, rep_header_t *sHeader, rep_tran
     if (value.header.account_id == value.transfer.account_id)
     {
         sHeader->ret_code = RC_SAME_ID;
+        pthread_mutex_lock(&accountLocks[index]);
         sTransfer->balance = bankAccounts[index].balance;
+        pthread_mutex_unlock(&accountLocks[index]);
         return 1;
     }
 
+    pthread_mutex_lock(&accountLocks[index]);
     if ((int)(bankAccounts[index].balance - value.transfer.amount) < (int)MIN_BALANCE)
     {
         sHeader->ret_code = RC_NO_FUNDS;
         sTransfer->balance = bankAccounts[index].balance;
+        pthread_mutex_unlock(&accountLocks[index]);
         return 1;
     }
+    pthread_mutex_unlock(&accountLocks[index]);
 
     return 0;
 }
 
-int finishTransfer(req_value_t value, int index, int i, rep_header_t *sHeader, rep_transfer_t *sTransfer)
+int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeader, rep_transfer_t *sTransfer)
 {
-    if (value.transfer.account_id == bankAccounts[i].account_id)
+    if (value.transfer.account_id == bankAccounts[dest].account_id)
     {
-        if (bankAccounts[i].balance + value.transfer.amount > MAX_BALANCE)
+        pthread_mutex_lock(&accountLocks[dest]);   
+        if (bankAccounts[dest].balance + value.transfer.amount > MAX_BALANCE)
         {
+            pthread_mutex_unlock(&accountLocks[dest]);
             sHeader->ret_code = RC_TOO_HIGH;
-            sTransfer->balance = bankAccounts[index].balance;
+            pthread_mutex_lock(&accountLocks[source]);
+            sTransfer->balance = bankAccounts[source].balance;
+            pthread_mutex_unlock(&accountLocks[source]);
             return 1;
         }
+        pthread_mutex_unlock(&accountLocks[dest]);
 
-        printf("previous amount 1 - %d \n", bankAccounts[index].balance);
-        printf("previous amount 2 - %d \n", bankAccounts[i].balance);
-        bankAccounts[i].balance += value.transfer.amount;
-        bankAccounts[index].balance -= value.transfer.amount;
-        printf("new amount 1 - %d \n", bankAccounts[index].balance);
-        printf("new amount 2 - %d \n", bankAccounts[i].balance);
+        printf("previous amount 1 - %d \n", bankAccounts[source].balance);
+        printf("previous amount 2 - %d \n", bankAccounts[dest].balance);
+        pthread_mutex_lock(&accountLocks[dest]);
+        bankAccounts[dest].balance += value.transfer.amount;
+        pthread_mutex_unlock(&accountLocks[dest]);
+        pthread_mutex_lock(&accountLocks[source]);
+        bankAccounts[source].balance -= value.transfer.amount;
+        pthread_mutex_unlock(&accountLocks[source]);
+        printf("new amount 1 - %d \n", bankAccounts[source].balance);
+        printf("new amount 2 - %d \n", bankAccounts[dest].balance);
         fflush(stdout);
         sHeader->ret_code = RC_OK;
-        sTransfer->balance = bankAccounts[index].balance;
+        pthread_mutex_lock(&accountLocks[source]);
+        sTransfer->balance = bankAccounts[source].balance;
+        pthread_mutex_unlock(&accountLocks[source]);
         return 1;
     }
 
@@ -199,7 +226,7 @@ void bankTransfer(req_value_t value, rep_header_t *sHeader, rep_transfer_t *sTra
 
     fflush(stdout);
 
-    for (int i = 0; i <= arrayIndex; i++)
+    for (int i = 0; i <= accountsIndex; i++)
     {
         if (finishTransfer(value, index, i, sHeader, sTransfer))
         {
@@ -208,7 +235,9 @@ void bankTransfer(req_value_t value, rep_header_t *sHeader, rep_transfer_t *sTra
     }
 
     sHeader->ret_code = RC_ID_NOT_FOUND;
+    pthread_mutex_lock(&accountLocks[index]);
     sTransfer->balance = bankAccounts[index].balance;
+    pthread_mutex_unlock(&accountLocks[index]);
 }
 
 int opUser(tlv_request_t tlv, rep_header_t *sHeader, rep_transfer_t *sTransfer)

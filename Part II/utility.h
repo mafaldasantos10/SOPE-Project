@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 /*
  * ================================================================================================
@@ -46,6 +47,11 @@ void validateDelay(char *delay);
  * SERVER Related Utility
  * ================================================================================================
  */
+
+typedef struct bank_office {
+  uint8_t bankID;
+  pthread_t tid;
+} bank_office_t;
 
 /**
  * @brief Generates a random set of hexadecimal numbers (salt)
