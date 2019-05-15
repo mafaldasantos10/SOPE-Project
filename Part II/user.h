@@ -59,3 +59,5 @@ int writeRequest(tlv_request_t *tlv, int fd);
  * @param int id User's id to be used if there is a timeout
  */
 void readReply(char *fifo, int fd, int id);
+
+void printReply(tlv_reply_t reply);

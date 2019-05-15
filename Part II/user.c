@@ -108,11 +108,23 @@ int writeRequest(tlv_request_t *tlv, int fd)
         reply.value.header.account_id = tlv->value.header.account_id;
         reply.value.header.ret_code = RC_SRV_DOWN;
         reply.type = op;
+        switch (op)
+        {
+        case OP_BALANCE:
+            reply.value.balance.balance = -1;
+            break;
+        case OP_SHUTDOWN:
+            reply.value.shutdown.active_offices = -1;
+            break;
+        case OP_TRANSFER:
+            reply.value.transfer.balance = -1;
+        default:
+            break;
+        }
         reply.length = sizeof(reply.type) + sizeof(reply.value);
-        logReply(fd, getpid(), &reply);
 
-        printf("retorno - %d\n", reply.value.header.ret_code);
-        fflush(stdout);
+        logReply(fd, getpid(), &reply);
+        printReply(reply);
 
         return 0;
     }
@@ -145,19 +157,94 @@ void readReply(char *pathFIFO, int fd, int id)
             reply.value.header.account_id = id;
             reply.value.header.ret_code = RC_SRV_TIMEOUT;
             reply.type = op;
+            switch (op)
+            {
+            case OP_BALANCE:
+                reply.value.balance.balance = -1;
+                break;
+            case OP_SHUTDOWN:
+                reply.value.shutdown.active_offices = -1;
+                break;
+            case OP_TRANSFER:
+                reply.value.transfer.balance = -1;
+            default:
+                break;
+            }
             reply.length = sizeof(reply.type) + sizeof(reply.value);
 
             break;
         }
     }
-
-    printf("id - %d\n", reply.value.header.account_id);
-    printf("retorno - %d\n", reply.value.header.ret_code);
-    fflush(stdout);
-
     logReply(fd, getpid(), &reply);
+    printReply(reply);
 
     close(userFIFO);
+}
+
+void printReply(tlv_reply_t reply)
+{
+    switch (reply.value.header.ret_code)
+    {
+    case RC_OK:
+        switch (reply.type)
+        {
+        case OP_CREATE_ACCOUNT:
+            printf("Account was successfully created.\n");
+            break;
+        case OP_BALANCE:
+            printf("Your balance is %d€.\n", reply.value.balance.balance);
+            break;
+        case OP_SHUTDOWN:
+            printf("Server was shutdown successfully. %d offices were active.\n", reply.value.shutdown.active_offices);
+            break;
+        case OP_TRANSFER:
+            printf("Your transfer was successfull. Your balance now is %d€\n", reply.value.transfer.balance);
+            break;
+        default:
+            break;
+        }
+        break;
+
+    case RC_SRV_DOWN:
+        printf("Server is down. Try again later.\n");
+        break;
+
+    case RC_SRV_TIMEOUT:
+        printf("Server took too long to respond.\n");
+        break;
+
+    case RC_LOGIN_FAIL:
+        printf("Invalid Login.\n");
+        break;
+
+    case RC_OP_NALLOW:
+        printf("You don't have permissions for that operation.\n");
+        break;
+
+    case RC_ID_IN_USE:
+        printf("There already is an account with ID %d.\n", reply.value.header.account_id);
+        break;
+
+    case RC_ID_NOT_FOUND:
+        printf("Invalid transfer. There is no destination account with that ID.\n");
+        break;
+
+    case RC_SAME_ID:
+        printf("Invalid transfer. The source and destination accounts are the same.\n");
+        break;
+
+    case RC_NO_FUNDS:
+        printf("Invalid transfer. You don't have enough balance for that transfer.\n");
+        break;
+
+    case RC_TOO_HIGH:
+        printf("Invalid transfer. The destination account balance would be too high.\n");
+        break;
+
+    default:
+        printf("Unexpected error.\n");
+        break;
+    }
 }
 
 int main(int argc, char *argv[])
