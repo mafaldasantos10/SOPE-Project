@@ -4,8 +4,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 #include <sys/types.h>
-#include <sys/wait.h>
+#include <sys/times.h>
 #include <sys/stat.h>
 
 #include "types.h"
@@ -97,33 +98,66 @@ char *getFIFOName()
     return pathFIFO;
 }
 
-void writeRequest(tlv_request_t *tlv, int fd)
+int writeRequest(tlv_request_t *tlv, int fd)
 {
+    tlv_reply_t reply;
     int serverFIFO = open(SERVER_FIFO_PATH, O_WRONLY);
+
+    logRequest(fd, getpid(), tlv);
 
     if (serverFIFO == -1)
     {
-        printf("sync error ");
-        exit(1);
-    }
-    logRequest(fd, getpid(), tlv);
+        reply.value.header.account_id = tlv->value.header.account_id;
+        reply.value.header.ret_code = RC_SRV_DOWN;
+        reply.type = op;
+        reply.length = sizeof(reply.type) + sizeof(reply.value);
+        logReply(fd, getpid(), &reply);
 
-    write(serverFIFO, tlv, sizeof(*tlv));
-    close(serverFIFO);
-}
-
-void readReply(tlv_reply_t reply, char *pathFIFO, int fd)
-{
-    int userFIFO = open(pathFIFO, O_RDONLY);
-
-    if (read(userFIFO, &reply, sizeof(reply)) > 0)
-    {
-        printf("id - %d\n", reply.value.header.account_id);
         printf("retorno - %d\n", reply.value.header.ret_code);
         fflush(stdout);
 
-        logReply(fd, getpid(), &reply);
+        return 0;
     }
+
+    write(serverFIFO, tlv, sizeof(*tlv));
+    close(serverFIFO);
+    return 1;
+}
+
+void readReply(char *pathFIFO, int fd, int id)
+{
+    tlv_reply_t reply;
+    int userFIFO;
+    //Timeut measuremet
+    double seconds;
+    clock_t start, current;
+    struct tms t;
+    long ticks = sysconf(_SC_CLK_TCK);
+
+    start = times(&t);
+
+    userFIFO = open(pathFIFO, O_RDONLY | O_NONBLOCK);
+
+    while (read(userFIFO, &reply, sizeof(reply)) <= 0)
+    {
+        current = times(&t);
+        seconds = (double)(current - start) / ticks;
+        if (seconds >= 30)
+        {
+            reply.value.header.account_id = id;
+            reply.value.header.ret_code = RC_SRV_TIMEOUT;
+            reply.type = op;
+            reply.length = sizeof(reply.type) + sizeof(reply.value);
+
+            break;
+        }
+    }
+
+    printf("id - %d\n", reply.value.header.account_id);
+    printf("retorno - %d\n", reply.value.header.ret_code);
+    fflush(stdout);
+
+    logReply(fd, getpid(), &reply);
 
     close(userFIFO);
 }
@@ -132,8 +166,7 @@ int main(int argc, char *argv[])
 {
     char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
     tlv_request_t *tlv = (tlv_request_t *)malloc(sizeof(struct tlv_request));
-    tlv_reply_t reply;
-    int fd= open(USER_LOGFILE, O_WRONLY | O_CREAT | O_APPEND, 0664);
+    int fd = open(USER_LOGFILE, O_WRONLY | O_CREAT | O_APPEND, 0664);
     req_create_account_t createAccount;
     req_transfer_t transfer;
     req_header_t header;
@@ -143,8 +176,8 @@ int main(int argc, char *argv[])
     mkfifo(pathFIFO, 0666);
 
     init(argc, argv, tlv, &createAccount, &transfer, &header, &value);
-    writeRequest(tlv, fd);
-    readReply(reply, pathFIFO, fd);
+    if (writeRequest(tlv, fd))
+        readReply(pathFIFO, fd, header.account_id);
 
     close(fd);
     unlink(pathFIFO);

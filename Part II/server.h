@@ -55,7 +55,7 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
  * @param rep_transfer_t* sTransfer Struct used for transfer op reply
  * @return int If the tranfer is invalid 1, otherwise -1
  */
-int transferChecks(req_value_t value, int index, rep_header_t *sHeader, rep_transfer_t *sTransfer);
+int isValidTransfer(req_value_t value, int index, rep_header_t *sHeader, rep_transfer_t *sTransfer);
 
 /**
  * @brief Does the trnsfer it is valid
@@ -110,6 +110,6 @@ void produceRequest(tlv_request_t tlv);
  * @param tlv_request_t tlv Struct with the account information
  * @return char* FIFO path
  */
-char *getFIFOName(tlv_request_t tlv);
+char *getUserFifo(tlv_request_t tlv);
 
 void bankCycle(int numThreads);

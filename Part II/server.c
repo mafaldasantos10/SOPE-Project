@@ -120,7 +120,7 @@ void createNewAccount(req_value_t value, rep_header_t *sHeader)
 
     if (searchID(newAccount.account_id) > -1)
     {
-        sHeader->ret_code = RC_SAME_ID;
+        sHeader->ret_code = RC_ID_IN_USE;
         return;
     }
 
@@ -159,7 +159,7 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
     pthread_mutex_unlock(&accountLocks[index]);
 }
 
-int transferChecks(req_value_t value, int index, rep_header_t *sHeader, rep_transfer_t *sTransfer)
+int isValidTransfer(req_value_t value, int index, rep_header_t *sHeader, rep_transfer_t *sTransfer)
 {
     if (value.header.account_id == value.transfer.account_id)
     {
@@ -228,7 +228,7 @@ void bankTransfer(req_value_t value, rep_header_t *sHeader, rep_transfer_t *sTra
     sHeader->account_id = value.header.account_id;
     int index = checkLoginAccount(value.header);
 
-    if (transferChecks(value, index, sHeader, sTransfer)) //mudar nome da função
+    if (isValidTransfer(value, index, sHeader, sTransfer)) 
     {
         return;
     }
@@ -358,7 +358,7 @@ void *consumeRequest(void *arg)
         }
 
         char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
-        strcpy(pathFIFO, getFIFOName(tlv));
+        strcpy(pathFIFO, getUserFifo(tlv));
 
         pthread_mutex_lock(&writeLock);
         int userFIFO = open(pathFIFO, O_WRONLY | O_NONBLOCK);
@@ -405,7 +405,7 @@ void produceRequest(tlv_request_t tlv)
     pthread_mutex_unlock(&requestsLock);
 }
 
-char *getFIFOName(tlv_request_t tlv)
+char *getUserFifo(tlv_request_t tlv)
 {
     int pid = tlv.value.header.pid;
     char *pathFIFO = malloc(USER_FIFO_PATH_LEN);

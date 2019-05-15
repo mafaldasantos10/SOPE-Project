@@ -46,14 +46,16 @@ char *getFIFOname();
  * 
  * @param tlv_request_t *tlv Struct with the request for the server
  * @param int fd ulog.txt file descriptor
+ * 
+ * @return 1 if write was sucessfull, 0 otherwise
  */
-void writeRequest(tlv_request_t *tlv, int fd);
+int writeRequest(tlv_request_t *tlv, int fd);
 
 /**
  * @brief Reads the FIFO from the server with the reply
  * 
- * @param tlv_reply_t reply Struct with the reply from the server
  * @param char* fifo FIFO path of the userFifo
  * @param int fd ulog.txt file descriptor
+ * @param int id User's id to be used if there is a timeout
  */
-void readReply(tlv_reply_t reply, char *fifo, int fd);
+void readReply(char *fifo, int fd, int id);
