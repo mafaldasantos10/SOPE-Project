@@ -111,5 +111,3 @@ void produceRequest(tlv_request_t tlv);
  * @return char* FIFO path
  */
 char *getUserFifo(tlv_request_t tlv);
-
-void bankCycle(int numThreads);

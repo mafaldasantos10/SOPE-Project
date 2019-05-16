@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <sys/stat.h>
 #include <pthread.h>
 
@@ -17,10 +16,13 @@
 int accountsIndex = 0;
 bank_account_t bankAccounts[MAX_BANK_ACCOUNTS];
 bank_office_t offices[MAX_BANK_OFFICES];
+int activeThreads = 0;
 
 tlv_request_t requestQueue[MAX_SAVED_REQUESTS];
 int inputIndex = 0, outputIndex = 0;
 int slots = MAX_SAVED_REQUESTS, requests = 0;
+
+int shutdown = 0;
 
 //Synchronitazion Mechanisms
 pthread_mutex_t accountLocks[MAX_BANK_ACCOUNTS];
@@ -28,6 +30,7 @@ pthread_mutex_t queueLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t slotsLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t requestsLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t writeLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t activeLock = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t slotsCond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t requestsCond = PTHREAD_COND_INITIALIZER;
@@ -115,7 +118,7 @@ void createNewAccount(req_value_t value, rep_header_t *sHeader)
 {
     bank_account_t account;
     req_create_account_t newAccount = value.create;
-    
+
     sHeader->account_id = newAccount.account_id;
 
     if (searchID(newAccount.account_id) > -1)
@@ -126,7 +129,7 @@ void createNewAccount(req_value_t value, rep_header_t *sHeader)
 
     char *salt = malloc(SALT_LEN);
     accountsIndex++;
-    pthread_mutex_init(&accountLocks[accountsIndex],NULL);
+    pthread_mutex_init(&accountLocks[accountsIndex], NULL);
 
     strcpy(salt, generateSalt());
     strcpy(account.hash, generateHash(salt, newAccount.password));
@@ -135,10 +138,10 @@ void createNewAccount(req_value_t value, rep_header_t *sHeader)
     account.account_id = newAccount.account_id;
 
     pthread_mutex_lock(&accountLocks[accountsIndex]);
-    usleep(value.header.op_delay_ms*1000);
+    usleep(value.header.op_delay_ms * 1000);
     bankAccounts[accountsIndex] = account;
     pthread_mutex_unlock(&accountLocks[accountsIndex]);
-    
+
     sHeader->ret_code = RC_OK;
 
     free(salt);
@@ -152,7 +155,7 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
 
     sHeader->ret_code = RC_OK;
     pthread_mutex_lock(&accountLocks[index]);
-    usleep(header.op_delay_ms*1000);
+    usleep(header.op_delay_ms * 1000);
     printf("account ballance - %d", bankAccounts[index].balance);
     fflush(stdout);
     sBalance->balance = bankAccounts[index].balance;
@@ -187,7 +190,7 @@ int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeade
 {
     if (value.transfer.account_id == bankAccounts[dest].account_id)
     {
-        pthread_mutex_lock(&accountLocks[dest]);   
+        pthread_mutex_lock(&accountLocks[dest]);
         if (bankAccounts[dest].balance + value.transfer.amount > MAX_BALANCE)
         {
             pthread_mutex_unlock(&accountLocks[dest]);
@@ -202,11 +205,11 @@ int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeade
         printf("previous amount 1 - %d \n", bankAccounts[source].balance);
         printf("previous amount 2 - %d \n", bankAccounts[dest].balance);
         pthread_mutex_lock(&accountLocks[dest]);
-        usleep(value.header.op_delay_ms*1000);
+        usleep(value.header.op_delay_ms * 1000);
         bankAccounts[dest].balance += value.transfer.amount;
         pthread_mutex_unlock(&accountLocks[dest]);
         pthread_mutex_lock(&accountLocks[source]);
-        usleep(value.header.op_delay_ms*1000);
+        usleep(value.header.op_delay_ms * 1000);
         bankAccounts[source].balance -= value.transfer.amount;
         pthread_mutex_unlock(&accountLocks[source]);
         printf("new amount 1 - %d \n", bankAccounts[source].balance);
@@ -228,7 +231,7 @@ void bankTransfer(req_value_t value, rep_header_t *sHeader, rep_transfer_t *sTra
     sHeader->account_id = value.header.account_id;
     int index = checkLoginAccount(value.header);
 
-    if (isValidTransfer(value, index, sHeader, sTransfer)) 
+    if (isValidTransfer(value, index, sHeader, sTransfer))
     {
         return;
     }
@@ -312,6 +315,11 @@ int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBal
         break;
 
     case OP_SHUTDOWN:
+        usleep(tlv.value.header.op_delay_ms*1000);
+        chmod(SERVER_FIFO_PATH, 0444);
+        sHeader->account_id = tlv.value.header.account_id;
+        sHeader->ret_code = RC_OK;
+        sValue->shutdown.active_offices = activeThreads;
         return -1;
         break;
 
@@ -331,31 +339,46 @@ void *consumeRequest(void *arg)
     tlv_reply_t *rTlv = (tlv_reply_t *)malloc(sizeof(struct tlv_reply));
 
     tlv_request_t tlv;
-    int shutdown = 0;
 
-    while (!shutdown)
+    while (1)
     {
         pthread_mutex_lock(&requestsLock);
+        if (shutdown && requests <= 0)
+        {
+            pthread_cond_broadcast(&requestsCond);
+            pthread_mutex_unlock(&requestsLock);
+            break;
+        }
+
         while (requests <= 0)
+        {
             pthread_cond_wait(&requestsCond, &requestsLock);
+            if (shutdown)
+            {
+                printf("\nThread Finished!\n");
+                pthread_mutex_unlock(&requestsLock);
+                pthread_exit(NULL);
+            }
+        }
         requests--;
         pthread_mutex_unlock(&requestsLock);
 
         getRequest(&tlv);
 
+        pthread_mutex_lock(&activeLock);
+        activeThreads++;
+        pthread_mutex_unlock(&activeLock);
+
         if (requestHandler(tlv, &sHeader, &sBalance, &sTransfer, &sValue) == -1)
         {
             shutdown = 1;
         }
-        else
-        {
-            sValue.header = sHeader;
-            rTlv->value.header = sValue.header;
-            rTlv->value.balance = sValue.balance;
-            rTlv->value.transfer = sValue.transfer;
-            rTlv->type = tlv.type;
-            rTlv->length = sizeof(sValue) + sizeof(tlv.type);
-        }
+        sValue.header = sHeader;
+        rTlv->value.header = sValue.header;
+        rTlv->value.balance = sValue.balance;
+        rTlv->value.transfer = sValue.transfer;
+        rTlv->type = tlv.type;
+        rTlv->length = sizeof(sValue) + sizeof(tlv.type);
 
         char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
         strcpy(pathFIFO, getUserFifo(tlv));
@@ -363,11 +386,13 @@ void *consumeRequest(void *arg)
         pthread_mutex_lock(&writeLock);
         int userFIFO = open(pathFIFO, O_WRONLY | O_NONBLOCK);
 
-        if (userFIFO < 0)
+        if (userFIFO == -1)
         {
-            pthread_mutex_unlock(&writeLock);    
-            if(!shutdown)
-                perror("Could not open reply fifo");
+            pthread_mutex_unlock(&writeLock);
+            // if (!shutdown)
+            // {
+            perror("Could not open reply fifo");
+            // }
             continue;
         }
 
@@ -376,8 +401,15 @@ void *consumeRequest(void *arg)
         fflush(stdout);
         write(userFIFO, rTlv, sizeof(*rTlv));
         close(userFIFO);
-        usleep(10); //giving time for the user to close the fifo
+
+        // if(shutdown)
+        //     usleep(10); //giving time for the user to close the fifo
+
         pthread_mutex_unlock(&writeLock);
+
+        pthread_mutex_lock(&activeLock);
+        activeThreads--;
+        pthread_mutex_unlock(&activeLock);
 
         pthread_mutex_lock(&slotsLock);
         slots++;
@@ -414,27 +446,20 @@ char *getUserFifo(tlv_request_t tlv)
     return pathFIFO;
 }
 
-void bankCycle(int numThreads)
+void bankCycle()
 {
     int serverFIFO = open(SERVER_FIFO_PATH, O_RDONLY);
     tlv_request_t tlv;
-    int shutdown = 0;
 
-    while (!shutdown)
+    while (1)
     {
         if (read(serverFIFO, &tlv, sizeof(tlv_request_t)) > 0)
         {
-            if (tlv.type == OP_SHUTDOWN && checkLoginAccount(tlv.value.header) != -1 && tlv.value.header.account_id == ADMIN_ACCOUNT_ID)
-            {
-                int it;
-                for (it = 0; it < numThreads; it++)
-                {
-                    produceRequest(tlv);
-                }
-                shutdown = 1;
-            }
-            else
-                produceRequest(tlv);
+            produceRequest(tlv);
+        }
+        else if (shutdown)
+        {
+            break;
         }
     }
 }
@@ -457,7 +482,7 @@ int main(int argc, char *argv[])
 
     mkfifo(SERVER_FIFO_PATH, 0666);
 
-    bankCycle(numThreads);
+    bankCycle();
 
     unlink(SERVER_FIFO_PATH);
 
