@@ -152,7 +152,7 @@ void readReply(char *pathFIFO, int fd, int id)
     {
         current = times(&t);
         seconds = (double)(current - start) / ticks;
-        if (seconds >= 30)
+        if (seconds >= FIFO_TIMEOUT_SECS)
         {
             reply.value.header.account_id = id;
             reply.value.header.ret_code = RC_SRV_TIMEOUT;

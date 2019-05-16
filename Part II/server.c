@@ -29,7 +29,6 @@ pthread_mutex_t accountLocks[MAX_BANK_ACCOUNTS];
 pthread_mutex_t queueLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t slotsLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t requestsLock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t writeLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t activeLock = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t slotsCond = PTHREAD_COND_INITIALIZER;
@@ -383,29 +382,21 @@ void *consumeRequest(void *arg)
         char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
         strcpy(pathFIFO, getUserFifo(tlv));
 
-        pthread_mutex_lock(&writeLock);
         int userFIFO = open(pathFIFO, O_WRONLY | O_NONBLOCK);
 
         if (userFIFO == -1)
         {
-            pthread_mutex_unlock(&writeLock);
-            // if (!shutdown)
-            // {
             perror("Could not open reply fifo");
-            // }
             continue;
         }
 
+        //TODO: remove following 3 lines
         printf("\nid - %d\n", rTlv->value.header.account_id);
         printf("retorno - %d\n", rTlv->value.header.ret_code);
         fflush(stdout);
+
         write(userFIFO, rTlv, sizeof(*rTlv));
         close(userFIFO);
-
-        // if(shutdown)
-        //     usleep(10); //giving time for the user to close the fifo
-
-        pthread_mutex_unlock(&writeLock);
 
         pthread_mutex_lock(&activeLock);
         activeThreads--;
