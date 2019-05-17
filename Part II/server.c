@@ -56,7 +56,7 @@ void insertRequest(const tlv_request_t *req)
 
 void getRequest(tlv_request_t *req)
 {
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, req->value.header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
@@ -183,7 +183,7 @@ void createNewAccount(req_value_t value, rep_header_t *sHeader)
     account.balance = newAccount.balance;
     account.account_id = newAccount.account_id;
 
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, account.account_id) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
@@ -199,7 +199,7 @@ void createNewAccount(req_value_t value, rep_header_t *sHeader)
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
     pthread_mutex_unlock(&accountLocks[accountsIndex]);
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, account.account_id) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
@@ -215,7 +215,7 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
     int index = checkLoginAccount(header);
 
     sHeader->ret_code = RC_OK;
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
@@ -227,7 +227,7 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
     usleep(header.op_delay_ms * 1000);
     sBalance->balance = bankAccounts[index].balance;
     pthread_mutex_unlock(&accountLocks[index]);
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
@@ -238,21 +238,21 @@ int isValidTransfer(req_value_t value, int index, rep_header_t *sHeader, rep_tra
     if (value.header.account_id == value.transfer.account_id)
     {
         sHeader->ret_code = RC_SAME_ID;
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
         pthread_mutex_lock(&accountLocks[index]);
         sTransfer->balance = bankAccounts[index].balance;
         pthread_mutex_unlock(&accountLocks[index]);
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
         return 1;
     }
 
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
@@ -262,14 +262,14 @@ int isValidTransfer(req_value_t value, int index, rep_header_t *sHeader, rep_tra
         sHeader->ret_code = RC_NO_FUNDS;
         sTransfer->balance = bankAccounts[index].balance;
         pthread_mutex_unlock(&accountLocks[index]);
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
         return 1;
     }
     pthread_mutex_unlock(&accountLocks[index]);
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
@@ -281,7 +281,7 @@ int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeade
 {
     if (value.transfer.account_id == bankAccounts[dest].account_id)
     {
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[dest].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
@@ -289,47 +289,47 @@ int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeade
         if (bankAccounts[dest].balance + value.transfer.amount > MAX_BALANCE)
         {
             pthread_mutex_unlock(&accountLocks[dest]);
-            if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+            if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[dest].account_id) < 0)
             {
                 fprintf(stderr, "Error writing to log. Moving on...\n");
             }
             sHeader->ret_code = RC_TOO_HIGH;
-            if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+            if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[source].account_id) < 0)
             {
                 fprintf(stderr, "Error writing to log. Moving on...\n");
             }
             pthread_mutex_lock(&accountLocks[source]);
             sTransfer->balance = bankAccounts[source].balance;
             pthread_mutex_unlock(&accountLocks[source]);
-            if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+            if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[source].account_id) < 0)
             {
                 fprintf(stderr, "Error writing to log. Moving on...\n");
             }
             return 1;
         }
         pthread_mutex_unlock(&accountLocks[dest]);
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[dest].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
 
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[dest].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
         pthread_mutex_lock(&accountLocks[dest]);
-        if (logSyncDelay(logfd, getOfficeId(), bankAccounts[dest].account_id, value.header.op_delay_ms) < 0)
+        if (logSyncDelay(logfd, getOfficeId(), bankAccounts[dest].account_id, bankAccounts[dest].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
         usleep(value.header.op_delay_ms * 1000);
         bankAccounts[dest].balance += value.transfer.amount;
         pthread_mutex_unlock(&accountLocks[dest]);
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[dest].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[source].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
@@ -341,20 +341,20 @@ int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeade
         usleep(value.header.op_delay_ms * 1000);
         bankAccounts[source].balance -= value.transfer.amount;
         pthread_mutex_unlock(&accountLocks[source]);
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[source].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
 
         sHeader->ret_code = RC_OK;
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[source].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
         pthread_mutex_lock(&accountLocks[source]);
         sTransfer->balance = bankAccounts[source].balance;
         pthread_mutex_unlock(&accountLocks[source]);
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[source].account_id) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
@@ -383,14 +383,14 @@ void bankTransfer(req_value_t value, rep_header_t *sHeader, rep_transfer_t *sTra
     }
 
     sHeader->ret_code = RC_ID_NOT_FOUND;
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
     pthread_mutex_lock(&accountLocks[index]);
     sTransfer->balance = bankAccounts[index].balance;
     pthread_mutex_unlock(&accountLocks[index]);
-    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
+    if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, bankAccounts[index].account_id) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
@@ -552,7 +552,7 @@ void *consumeRequest(void *arg)
 
     while (1)
     {
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, tlv.value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
@@ -574,7 +574,7 @@ void *consumeRequest(void *arg)
 
         while (requests <= 0)
         {
-            if (logSyncMech(logfd, getOfficeId(), SYNC_OP_COND_WAIT, SYNC_ROLE_CONSUMER, tlv.value.header.pid) < 0)
+            if (logSyncMech(logfd, getOfficeId(), SYNC_OP_COND_WAIT, SYNC_ROLE_CONSUMER, 0) < 0)
             {
                 fprintf(stderr, "Error writing to log. Moving on...\n");
             }
@@ -595,7 +595,7 @@ void *consumeRequest(void *arg)
         }
         requests--;
         pthread_mutex_unlock(&requestsLock);
-        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, tlv.value.header.pid) < 0)
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
