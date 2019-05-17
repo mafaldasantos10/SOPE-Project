@@ -3,7 +3,7 @@
 #include "types.h"
 #include "user.h"
 
-void insertRequest(tlv_request_t *req);
+void insertRequest(const tlv_request_t *req);
 void getRequest(tlv_request_t *req);
 /**
  * @brief Adds the admin to the position 0 of the array bankAccounts
@@ -12,7 +12,9 @@ void getRequest(tlv_request_t *req);
  */
 void createAdmin(char *pass);
 
-void createBankOffices(int numThreads);
+void createBankOffices();
+
+int getOfficeId();
 /**
  * @brief Verifies if the pair id and password already exists
  * 
@@ -99,6 +101,8 @@ int opUser(tlv_request_t tlv, rep_header_t *sHeader, rep_transfer_t *sTransfer);
  * @return int 1 if there was a shutdown request
  */
 int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBalance, rep_transfer_t *sTransfer, rep_value_t *sValue);
+
+int processRequestReply(tlv_request_t tlv);
 
 void *consumeRequest(void *arg);
 
