@@ -51,6 +51,8 @@ char *getFIFOname();
  */
 int writeRequest(tlv_request_t *tlv, int fd);
 
+void alarm_handler();
+
 /**
  * @brief Reads the FIFO from the server with the reply
  * 

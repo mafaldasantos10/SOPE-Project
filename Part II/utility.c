@@ -77,6 +77,22 @@ void validateDelay(char *delay)
     }
 }
 
+void validateArgList(char *argList, int number)
+{
+    int counter = 1;
+    for (int i = 0; argList[i] != '\0'; i++)
+    {
+        if (argList[i] == ' ')
+            counter++;
+    }
+
+    if (counter != number)
+    {
+        printf("Invalid List of Arguments for the Requested Operation!\n");
+        exit(6);
+    }
+}
+
 /*
  * ================================================================================================
  * SERVER Related Utility
@@ -110,10 +126,12 @@ char *generateHash(char *salt, char *password)
 
     fpout = popen(cmd, "r");
 
-    if(fpout == NULL){
+    if (fpout == NULL)
+    {
         perror("Generating Hash");
         exit(2);
     }
+
     fgets(hash, HASH_LEN, fpout);
     pclose(fpout);
 
