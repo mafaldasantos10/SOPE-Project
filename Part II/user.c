@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/times.h>
 #include <sys/stat.h>
+#include <signal.h>
 
 #include "types.h"
 #include "user.h"
@@ -15,6 +16,7 @@
 #include "sope.h"
 
 op_type_t op;
+int timeout = 0;
 
 void init(int argc, char *argv[], tlv_request_t *tlv, req_create_account_t *createAccount, req_transfer_t *transfer, req_header_t *header, req_value_t *value)
 {
@@ -54,6 +56,8 @@ void fillOperationInfo(int op, char *argList, req_create_account_t *createAccoun
     {
     case OP_CREATE_ACCOUNT: // accountID balance€ “password”
 
+        validateArgList(argList, 3); // must have 3 arguments
+
         tok = strtok(argList, " ");
         validateAccountID(tok);
         createAccount->account_id = atoi(tok);
@@ -70,6 +74,8 @@ void fillOperationInfo(int op, char *argList, req_create_account_t *createAccoun
         break;
 
     case OP_TRANSFER: // destinyID ammount€
+
+        validateArgList(argList, 2); // must have 2 arguments
 
         tok = strtok(argList, " ");
         validateAccountID(tok);
@@ -134,29 +140,37 @@ int writeRequest(tlv_request_t *tlv, int fd)
     return 1;
 }
 
+void alarm_handler()
+{
+    timeout = 1;
+}
+
 void readReply(char *pathFIFO, int fd, int id)
 {
     tlv_reply_t reply;
     int userFIFO;
-    //Timeut measuremet
-    double seconds;
-    clock_t start, current;
-    struct tms t;
-    long ticks = sysconf(_SC_CLK_TCK);
 
-    start = times(&t);
+    /* --- timeout --- */
+    struct sigaction action;
+
+    action.sa_handler = alarm_handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    sigaction(SIGALRM, &action, NULL);
+    /* --------------- */
 
     userFIFO = open(pathFIFO, O_RDONLY | O_NONBLOCK);
 
+    alarm(FIFO_TIMEOUT_SECS);
+
     while (read(userFIFO, &reply, sizeof(reply)) <= 0)
     {
-        current = times(&t);
-        seconds = (double)(current - start) / ticks;
-        if (seconds >= FIFO_TIMEOUT_SECS)
+        if (timeout)
         {
             reply.value.header.account_id = id;
             reply.value.header.ret_code = RC_SRV_TIMEOUT;
             reply.type = op;
+
             switch (op)
             {
             case OP_BALANCE:
@@ -170,11 +184,12 @@ void readReply(char *pathFIFO, int fd, int id)
             default:
                 break;
             }
-            reply.length = sizeof(reply.type) + sizeof(reply.value);
 
+            reply.length = sizeof(reply.type) + sizeof(reply.value);
             break;
         }
     }
+
     logReply(fd, getpid(), &reply);
     printReply(reply);
 
@@ -198,11 +213,12 @@ void printReply(tlv_reply_t reply)
             printf("Server was shutdown successfully. %d offices were active.\n", reply.value.shutdown.active_offices);
             break;
         case OP_TRANSFER:
-            printf("Your transfer was successfull. Your balance now is %d€\n", reply.value.transfer.balance);
+            printf("Your transfer was successful. Your balance now is %d€\n", reply.value.transfer.balance);
             break;
         default:
             break;
         }
+
         break;
 
     case RC_SRV_DOWN:

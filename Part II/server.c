@@ -314,7 +314,7 @@ int requestHandler(tlv_request_t tlv, rep_header_t *sHeader, rep_balance_t *sBal
         break;
 
     case OP_SHUTDOWN:
-        usleep(tlv.value.header.op_delay_ms*1000);
+        usleep(tlv.value.header.op_delay_ms * 1000);
         chmod(SERVER_FIFO_PATH, 0444);
         sHeader->account_id = tlv.value.header.account_id;
         sHeader->ret_code = RC_OK;

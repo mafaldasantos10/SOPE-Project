@@ -42,13 +42,22 @@ void validateAmount(char *amount);
  */
 void validateDelay(char *delay);
 
+/**
+ * @brief Verifies if the operation argument list is valid
+ * 
+ * @param char* argList Given argument list
+ * @param int number Expected number of argument of the list
+ */
+void validateArgList(char *argList, int number);
+
 /*
  * ================================================================================================
  * SERVER Related Utility
  * ================================================================================================
  */
 
-typedef struct bank_office {
+typedef struct bank_office
+{
   uint8_t bankID;
   pthread_t tid;
 } bank_office_t;
