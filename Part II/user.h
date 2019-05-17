@@ -1,65 +1,71 @@
 #pragma once
 
 /**
- * @brief Initializes the user program
+ * @brief Initializes the user program.
  * 
- * @param int argc Number of arguments passed throught the command line
- * @param char *argv[] Arguments passed throught the command line
- * @param tlv_request_t *tlv TLV struct with the request for the server
- * @param req_create_account_t *createAccount Struct used for the request to the server
- * @param req_transfer_t *transfer Struct used for the request to the server
- * @param req_header_t *header Struct used for the request to the server
- * @param req_value_t *value Struct used for the request to the server
+ * @param argc Number of arguments passed throught the command line.
+ * @param argv[] Arguments passed throught the command line.
+ * @param tlv TLV struct with the request for the server.
+ * @param createAccount Struct used for the request to the server.
+ * @param transfer Struct used for the request to the server.
+ * @param header Struct used for the request to the server.
+ * @param value Struct used for the request to the server.
  */
 void init(int argc, char *argv[], tlv_request_t *tlv, req_create_account_t *createAccount, req_transfer_t *transfer, req_header_t *header, req_value_t *value);
 
 /**
- * @brief Fills the necessary structs according to the respective operation
+ * @brief Fills the necessary structs according to the respective operation.
  * 
- * @param int op Operation needed to complete
- * @param char *argList Argument List used for the user operation
- * @param req_create_account_t *createAccount Struct used for the request to the server
- * @param req_transfer_t *transfer Struct used for the request to the server
- * @param req_value_t *value Struct used for the request to the server
+ * @param op Operation code.
+ * @param argList Argument List used for the user operation.
+ * @param createAccount Struct used for the request to the server.
+ * @param transfer Struct used for the request to the server.
+ * @param value Struct used for the request to the server.
  */
 void fillOperationInfo(int op, char *argList, req_create_account_t *createAccount, req_transfer_t *transfer, req_value_t *value);
 
 /**
- * @brief Fills the request header
+ * @brief Fills the request header.
  * 
- * @param char *argv[] Arguments passed throught the command line
- * @param req_header_t *header Struct used for the request to the server
- * @param req_value_t *value Struct used for the request to the server
+ * @param rgv[] Arguments passed throught the command line.
+ * @param header Struct used for the request to the server.
+ * @param value Struct used for the request to the server.
  */
 void fillHeader(char *argv[], req_header_t *header, req_value_t *value);
 
 /**
- * @brief Generates the user FIFO path based on its PID
+ * @brief Generates the user FIFO path based on the process PID.
  * 
- * @param tlv_request_t tlv Struct with the request information
- * @return char* FIFO path
+ * @param tlv Struct with the request information.
+ * @return FIFO path.
  */
 char *getFIFOname();
 
 /**
- * @brief Reads the FIFO from the server with the reply
+ * @brief Writes the request in the server's FIFO.
  * 
- * @param tlv_request_t *tlv Struct with the request for the server
- * @param int fd ulog.txt file descriptor
+ * @param tlv Struct with the request for the server.
+ * @param fd Logfile file descriptor.
  * 
- * @return 1 if write was sucessfull, 0 otherwise
+ * @return 1 if write was sucessfull, 0 if the server's FIFO could not be opened.
  */
 int writeRequest(tlv_request_t *tlv, int fd);
 
+/**
+ * @brief Handler for SIG_ALRM signal. Sets the timeout flag to true.
+ */
 void alarm_handler();
 
 /**
- * @brief Reads the FIFO from the server with the reply
+ * @brief Reads the reply from the server.
  * 
- * @param char* fifo FIFO path of the userFifo
- * @param int fd ulog.txt file descriptor
- * @param int id User's id to be used if there is a timeout
+ * @param fifo User's FIFO path.
+ * @param fd Logfile file descriptor.
+ * @param id User's id to be used if there is a timeout.
  */
 void readReply(char *fifo, int fd, int id);
 
+/**
+ * @brief Prints a human friendly message on screen according to the reply from server.
+ */
 void printReply(tlv_reply_t reply);
