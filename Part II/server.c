@@ -127,7 +127,6 @@ int getOfficeId()
             return offices[i].bankID;
     }
 
-    printf("\nNOT SUPPOSED TO HAPPEN\n");
     return -1;
 }
 
@@ -214,7 +213,6 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
 {
     sHeader->account_id = header.account_id;
     int index = checkLoginAccount(header);
-    printf("loginCheck %d, index \n", index);
 
     sHeader->ret_code = RC_OK;
     if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, header.pid) < 0)
@@ -227,8 +225,6 @@ void checkBalance(req_header_t header, rep_header_t *sHeader, rep_balance_t *sBa
         fprintf(stderr, "Error writing to log. Moving on...\n");
     }
     usleep(header.op_delay_ms * 1000);
-    printf("account ballance - %d", bankAccounts[index].balance);
-    fflush(stdout);
     sBalance->balance = bankAccounts[index].balance;
     pthread_mutex_unlock(&accountLocks[index]);
     if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, header.pid) < 0)
@@ -317,8 +313,6 @@ int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeade
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
 
-        printf("previous amount 1 - %d \n", bankAccounts[source].balance);
-        printf("previous amount 2 - %d \n", bankAccounts[dest].balance);
         if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
@@ -351,9 +345,6 @@ int finishTransfer(req_value_t value, int source, int dest, rep_header_t *sHeade
         {
             fprintf(stderr, "Error writing to log. Moving on...\n");
         }
-        printf("new amount 1 - %d \n", bankAccounts[source].balance);
-        printf("new amount 2 - %d \n", bankAccounts[dest].balance);
-        fflush(stdout);
 
         sHeader->ret_code = RC_OK;
         if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, value.header.pid) < 0)
@@ -382,8 +373,6 @@ void bankTransfer(req_value_t value, rep_header_t *sHeader, rep_transfer_t *sTra
     {
         return;
     }
-
-    fflush(stdout);
 
     for (int i = 0; i <= accountsIndex; i++)
     {
@@ -532,13 +521,8 @@ int processRequestReply(tlv_request_t tlv)
         {
         fprintf(stderr, "Error writing to log. Moving on...\n");
         }
-        return 1;
+        return -1;
     }
-
-    //TODO: remove following 3 lines
-    printf("\nid - %d\n", rTlv->value.header.account_id);
-    printf("retorno - %d\n", rTlv->value.header.ret_code);
-    fflush(stdout);
 
     if (logReply(logfd, getOfficeId(), rTlv) < 0)
     {
@@ -597,7 +581,6 @@ void *consumeRequest(void *arg)
             pthread_cond_wait(&requestsCond, &requestsLock);
             if (shutdown)
             {
-                printf("\nThread Finished!\n");
                 pthread_mutex_unlock(&requestsLock);
                 if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, tlv.value.header.pid) < 0)
                 {
@@ -644,7 +627,6 @@ void *consumeRequest(void *arg)
         }
     }
 
-    printf("\nThread Finished!\n");
     if (logBankOfficeClose(logfd, getOfficeId(), pthread_self()) < 0)
     {
         fprintf(stderr, "Error writing to log. Moving on...\n");
