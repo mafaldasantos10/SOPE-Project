@@ -15,8 +15,9 @@
 #include "utility.h"
 #include "sope.h"
 
-op_type_t op;
-int timeout = 0;
+op_type_t op; //operation type
+int id; //account id
+int fd; //logfile file descriptor
 
 void init(int argc, char *argv[], tlv_request_t *tlv, req_create_account_t *createAccount, req_transfer_t *transfer, req_header_t *header, req_value_t *value)
 {
@@ -41,6 +42,7 @@ void fillHeader(char *argv[], req_header_t *header, req_value_t *value)
 {
     header->pid = getpid();
     header->account_id = atoi(argv[1]);
+    id = header->account_id;
     strcpy(header->password, argv[2]);
     validateDelay(argv[3]);
     header->op_delay_ms = atoi(argv[3]);
@@ -102,7 +104,7 @@ char *getFIFOName()
     return pathFIFO;
 }
 
-int writeRequest(tlv_request_t *tlv, int fd)
+int writeRequest(tlv_request_t *tlv)
 {
     tlv_reply_t reply;
     int serverFIFO = open(SERVER_FIFO_PATH, O_WRONLY);
@@ -142,10 +144,36 @@ int writeRequest(tlv_request_t *tlv, int fd)
 
 void alarm_handler()
 {
-    timeout = 1;
+    tlv_reply_t reply;
+
+    reply.value.header.account_id = id;
+    reply.value.header.ret_code = RC_SRV_TIMEOUT;
+    reply.type = op;
+
+    switch (op)
+    {
+    case OP_BALANCE:
+        reply.value.balance.balance = -1;
+        break;
+    case OP_SHUTDOWN:
+        reply.value.shutdown.active_offices = -1;
+        break;
+    case OP_TRANSFER:
+        reply.value.transfer.balance = -1;
+    default:
+        break;
+    }
+
+    reply.length = sizeof(reply.type) + sizeof(reply.value);
+
+    logReply(fd, getpid(), &reply);
+    printReply(reply);
+
+    unlink(getFIFOName());
+    exit(1);
 }
 
-void readReply(char *pathFIFO, int fd, int id)
+void readReply(char *pathFIFO)
 {
     tlv_reply_t reply;
     int userFIFO;
@@ -159,35 +187,12 @@ void readReply(char *pathFIFO, int fd, int id)
     sigaction(SIGALRM, &action, NULL);
     /* --------------- */
 
-    userFIFO = open(pathFIFO, O_RDONLY | O_NONBLOCK);
-
     alarm(FIFO_TIMEOUT_SECS);
+    userFIFO = open(pathFIFO, O_RDONLY);
 
     while (read(userFIFO, &reply, sizeof(reply)) <= 0)
     {
-        if (timeout)
-        {
-            reply.value.header.account_id = id;
-            reply.value.header.ret_code = RC_SRV_TIMEOUT;
-            reply.type = op;
-
-            switch (op)
-            {
-            case OP_BALANCE:
-                reply.value.balance.balance = -1;
-                break;
-            case OP_SHUTDOWN:
-                reply.value.shutdown.active_offices = -1;
-                break;
-            case OP_TRANSFER:
-                reply.value.transfer.balance = -1;
-            default:
-                break;
-            }
-
-            reply.length = sizeof(reply.type) + sizeof(reply.value);
-            break;
-        }
+        fprintf(stderr, "No information to read. Trying again...\n");
     }
 
     logReply(fd, getpid(), &reply);
@@ -267,7 +272,7 @@ int main(int argc, char *argv[])
 {
     char *pathFIFO = malloc(USER_FIFO_PATH_LEN);
     tlv_request_t *tlv = (tlv_request_t *)malloc(sizeof(struct tlv_request));
-    int fd = open(USER_LOGFILE, O_WRONLY | O_CREAT | O_APPEND, 0664);
+    fd = open(USER_LOGFILE, O_WRONLY | O_CREAT | O_APPEND, 0664);
     req_create_account_t createAccount;
     req_transfer_t transfer;
     req_header_t header;
@@ -277,8 +282,8 @@ int main(int argc, char *argv[])
     mkfifo(pathFIFO, 0666);
 
     init(argc, argv, tlv, &createAccount, &transfer, &header, &value);
-    if (writeRequest(tlv, fd))
-        readReply(pathFIFO, fd, header.account_id);
+    if (writeRequest(tlv))
+        readReply(pathFIFO);
 
     close(fd);
     unlink(pathFIFO);

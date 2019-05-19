@@ -39,20 +39,20 @@ void fillHeader(char *argv[], req_header_t *header, req_value_t *value);
  * @param tlv Struct with the request information.
  * @return FIFO path.
  */
-char *getFIFOname();
+char *getFIFOName();
 
 /**
  * @brief Writes the request in the server's FIFO.
  * 
  * @param tlv Struct with the request for the server.
- * @param fd Logfile file descriptor.
  * 
  * @return 1 if write was sucessfull, 0 if the server's FIFO could not be opened.
  */
-int writeRequest(tlv_request_t *tlv, int fd);
+int writeRequest(tlv_request_t *tlv);
 
 /**
- * @brief Handler for SIG_ALRM signal. Sets the timeout flag to true.
+ * @brief Handler for SIG_ALRM signal. Called when a Timeout occurs.
+ *  Sets the reply message accordingly and closes the program.
  */
 void alarm_handler();
 
@@ -60,10 +60,8 @@ void alarm_handler();
  * @brief Reads the reply from the server.
  * 
  * @param fifo User's FIFO path.
- * @param fd Logfile file descriptor.
- * @param id User's id to be used if there is a timeout.
  */
-void readReply(char *fifo, int fd, int id);
+void readReply(char *fifo);
 
 /**
  * @brief Prints a human friendly message on screen according to the reply from server.
