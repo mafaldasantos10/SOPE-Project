@@ -519,7 +519,19 @@ int processRequestReply(tlv_request_t tlv)
         rTlv->value.header.ret_code = RC_USR_DOWN;
         if (logReply(logfd, getOfficeId(), rTlv) < 0)
         {
-        fprintf(stderr, "Error writing to log. Moving on...\n");
+            fprintf(stderr, "Error writing to log. Moving on...\n");
+        }
+
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, tlv.value.header.pid) < 0)
+        {
+            fprintf(stderr, "Error writing to log. Moving on...\n");
+        }
+        pthread_mutex_lock(&activeLock);
+        activeThreads--;
+        pthread_mutex_unlock(&activeLock);
+        if (logSyncMech(logfd, getOfficeId(), SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, tlv.value.header.pid) < 0)
+        {
+            fprintf(stderr, "Error writing to log. Moving on...\n");
         }
         return -1;
     }
